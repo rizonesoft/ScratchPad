@@ -15,29 +15,8 @@ public sealed class GoldenComparisonTests
         this.output = output;
     }
 
-    [Fact]
-    [Trait(UiGolden.TraitName, UiGolden.TraitValue)]
-    public void FreshCaptureMatchesGolden()
-    {
-        using var fresh = UiCapture.CaptureWindow(UiGolden.Tolerance());
-        UiGolden.AssertMatches(fresh, "main-window", output);
-    }
-
-    [Fact]
-    [Trait(UiGolden.TraitName, UiGolden.TraitValue)]
-    public void LeftoverSessionNeverLeaksIntoTheCapture()
-    {
-        // WhenStarts defaults to Continue, so a session another test left
-        // behind restores its tabs into the capture (a dirty "4 characters"
-        // tab once did); the capture must start from a fresh session.
-        new SessionData
-        {
-            Windows = [new SessionWindow { Tabs = [new SessionTab { Content = "leftover", Caret = 4 }, new SessionTab { Content = "second leftover tab" }] }],
-        }.Save();
-        using var fresh = UiCapture.CaptureWindow(UiGolden.Tolerance());
-        UiGolden.AssertMatches(fresh, "main-window", output);
-    }
-
+    // The comparer proves itself here; the surface goldens live with their surfaces
+    // (MainWindowTests, TabStripGoldenTests, SettingsPageTests).
     [Fact]
     public void TenPixelShiftFailsComparison()
     {

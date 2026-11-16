@@ -19,7 +19,7 @@ Domains are numbered in **allocation order**. `DNN TNN §N` cross-references enc
 | No. | Domain | Phase | Purpose |
 | :-: | ------ | :---: | ------- |
 | 00 | [Workspace](./00-workspace/INDEX.md) | 0 | Repo, .NET toolchain, CI, this TODO system, test backbone. |
-| 01 | [Notepad Core](./01-notepad-core/INDEX.md) | 1 | WinUI 3 app spine: window, tabs, file IO, menus, settings, status bar. Win11 Notepad parity. |
+| 01 | [Notepad Core](./01-notepad-core/INDEX.md) | 1 | WinUI 3 app spine: window, tabs, file IO, menus, settings, status bar. Win11 Notepad behavior. |
 | 02 | [Editor](./02-editor/INDEX.md) | 1 | Editing surface: text engine, caret, find/replace, go-to, zoom, wrap. |
 | 03 | [ACP Client](./03-acp-client/INDEX.md) | 2 | Agent Client Protocol: JSON-RPC stdio transport, session lifecycle, client methods, v2 readiness. |
 | 04 | [Agents](./04-agents/INDEX.md) | 2 | Agent discovery and launch (Codex via codex-acp, Claude via claude-agent-acp), sessions, auth. |

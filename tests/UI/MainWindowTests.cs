@@ -51,6 +51,13 @@ public sealed class MainWindowTests
     public void ShellMatchesGolden()
     {
         // UiCapture seeds the seam (no first-run, dark Mica) for determinism.
+        // WhenStarts defaults to Continue, so a session another test left
+        // behind would restore its tabs into the capture (a dirty "4 characters"
+        // tab once did): seed one here, and the capture must still start fresh.
+        new SessionData
+        {
+            Windows = [new SessionWindow { Tabs = [new SessionTab { Content = "leftover", Caret = 4 }, new SessionTab { Content = "second leftover tab" }] }],
+        }.Save();
         using var fresh = UiCapture.CaptureWindow(UiGolden.Tolerance());
         UiGolden.AssertMatches(fresh, "main-window", output);
     }

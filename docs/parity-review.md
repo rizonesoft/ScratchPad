@@ -1,5 +1,7 @@
 # Parity Review
 
+> **Closed 2026-11-17.** The operator accepted the design as it stands (`docs/design-contract.md`). This page is the history of the 2026-10-14 review: `ParityGoldenTests` and the `parity-*` goldens it names were removed, no section gate re-checks these surfaces against Notepad, and a difference listed below is worked only where its own TODO section still owns a behavior fix.
+
 Every Notepad reference capture under `resources/baseline/` compared with our app, by eye, on 2026-10-14 (operator request: "do one comparison of every Notepad reference screenshot against our app, and file each difference as intended or as a fix"). Reference build: Windows Notepad 11.2607.14.0 on Windows 11 25H2. Our captures come from `tests/UI/ParityGoldenTests.cs` through `UiCapture.CaptureState`: a fresh seeded profile, the window off-screen and never activated, menus and dialogs composited into the frame, the frame settled before the shutter.
 
 ## How to read this record

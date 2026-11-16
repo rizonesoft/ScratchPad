@@ -13,7 +13,7 @@
 - [ ] `py scripts/todo-graph.py validate` shows 0 fatal
 - [ ] `py scripts/todo-graph.py plan --check` is current
 
-<!-- Paste the relevant output lines. For Notepad behavior, cite the baseline capture it matches; for protocol behavior, cite the ACP text. -->
+<!-- Paste the relevant output lines. For Notepad behavior, say what Windows 11 Notepad does in the same steps; for protocol behavior, cite the ACP text. -->
 
 ## Risk
 

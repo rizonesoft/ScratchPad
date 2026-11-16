@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **160 of 306 sections complete (52%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **160 of 305 sections complete (52%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -42,7 +42,7 @@ Each clause already has an owner, and this table is where to look when asking "i
 
 | Aim                            | Owned by                                                                                     |
 | ------------------------------ | -------------------------------------------------------------------------------------------- |
-| Notepad parity, no deviation   | `D00 T02 §3` (captures) · Fidelity blocks on every UI section · `D06 T01 §3` (parity suites) |
+| Notepad behavior, own identity | `docs/design-contract.md` · `D00 T02 §3` (captures, a behavior reference) · `D06 T01 §3`     |
 | Every control functional       | Surface-completeness rule in `todo/README.md` · `D01 T02 §6` (menu audit)                    |
 | Automatic and complete testing | `D00 T02` (backbone) · `D06 T01` (strategy) · `D06 T02` (conformance)                        |
 | ACP client correctness         | `D03 T01` (transport/lifecycle) · `D03 T02` (client methods) · `D06 T02` (conformance)       |
@@ -396,51 +396,52 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 
 ### Phase 3 -- AI surface and quality: panel, consent, conformance
 
-|  ✔  | Section       | Deliverable                                           | Items |
-| :-: | ------------- | ----------------------------------------------------- | :---: |
-| [ ] | `D05 T01 §1`  | Panel shell and transcript contract                   |   4   |
-| [ ] | `D05 T01 §2`  | Streaming transcript rendering                        |   5   |
-| [ ] | `D05 T01 §3`  | Input, send, and stop                                 |   4   |
-| [ ] | `D05 T01 §4`  | Turn states and cancellation UX                       |   4   |
-| [ ] | `D05 T01 §5`  | Agent picker and history                              |   5   |
-| [ ] | `D05 T01 §6`  | Panel and editor coexistence                          |   4   |
-| [ ] | `D05 T01 §7`  | Chat export to Markdown                               |   4   |
-| [ ] | `D05 T02 §1`  | Permission prompt surface                             |   5   |
-| [ ] | `D05 T02 §2`  | Tool-call and plan display                            |   5   |
-| [ ] | `D05 T02 §3`  | Diff review                                           |   5   |
-| [ ] | `D05 T02 §4`  | Apply to editor through undo                          |   6   |
-| [ ] | `D05 T02 §5`  | Elicitation forms                                     |   4   |
-| [ ] | `D05 T02 §6`  | Selection actions: explain, rewrite, summarize        |  14   |
-| [ ] | `D05 T02 §7`  | Document actions: translate, extract, summarize       |   7   |
-| [ ] | `D05 T02 §8`  | Continue writing with ghost drafts                    |   6   |
-| [ ] | `D05 T02 §9`  | Agent title suggestions for untitled tabs             |   4   |
-| [ ] | `D05 T02 §10` | Grants and audit viewer                               |   3   |
-| [ ] | `D06 T01 §1`  | Strategy doc with layers and bars                     |   5   |
-| [ ] | `D06 T01 §2`  | Coverage floors enforced in CI                        |   5   |
-| [ ] | `D06 T01 §3`  | Notepad parity UI suites                              |   5   |
-| [ ] | `D06 T01 §4`  | AI surface UI suites                                  |   4   |
-| [ ] | `D06 T01 §5`  | Perf budgets enforced in CI                           |   4   |
-| [ ] | `D06 T01 §6`  | Flake policy and quarantine operation                 |   5   |
-| [ ] | `D06 T01 §7`  | Deterministic input mode for popup and dialog goldens |   4   |
-| [ ] | `D06 T01 §8`  | UI tests use a throwaway data folder                  |   5   |
-| [ ] | `D06 T02 §1`  | Scripted agent library                                |   6   |
-| [ ] | `D06 T02 §2`  | Schema pin and drift detection                        |   4   |
-| [ ] | `D06 T02 §3`  | Version matrix (v1 and v2)                            |   4   |
-| [ ] | `D06 T02 §4`  | Adapter compatibility schedule                        |   5   |
-| [ ] | `D05 T03 §1`  | Agent status bar                                      |   5   |
-| [ ] | `D05 T03 §2`  | Per-tab pane with document context                    |   5   |
-| [ ] | `D05 T03 §3`  | Slash commands                                        |   6   |
-| [ ] | `D05 T03 §4`  | Agent management panel                                |   5   |
-| [ ] | `D05 T03 §5`  | Token usage display                                   |   4   |
-| [ ] | `D05 T03 §6`  | AI settings group                                     |   3   |
-| [ ] | `D08 T01 §1`  | Kokoro TTS embedded                                   |   6   |
-| [ ] | `D08 T01 §2`  | Audio transcode and provisioning                      |   4   |
-| [ ] | `D08 T01 §3`  | Whisper STT embedded                                  |   5   |
-| [ ] | `D08 T01 §4`  | Provider interface with OpenRouter                    |   6   |
-| [ ] | `D08 T02 §1`  | Read-aloud UI with MP3                                |   5   |
-| [ ] | `D08 T02 §2`  | Dictate and transcribe UI                             |   5   |
-| [ ] | `D08 T02 §3`  | Provider settings and consent                         |   5   |
-| [ ] | `D08 T02 §4`  | Voice menus and shortcuts                             |   4   |
+|  ✔  | Section       | Deliverable                                     | Items |
+| :-: | ------------- | ----------------------------------------------- | :---: |
+| [ ] | `D05 T01 §1`  | Panel shell and transcript contract             |   4   |
+| [ ] | `D05 T01 §2`  | Streaming transcript rendering                  |   5   |
+| [ ] | `D05 T01 §3`  | Input, send, and stop                           |   4   |
+| [ ] | `D05 T01 §4`  | Turn states and cancellation UX                 |   4   |
+| [ ] | `D05 T01 §5`  | Agent picker and history                        |   5   |
+| [ ] | `D05 T01 §6`  | Panel and editor coexistence                    |   4   |
+| [ ] | `D05 T01 §7`  | Chat export to Markdown                         |   4   |
+| [ ] | `D05 T02 §1`  | Permission prompt surface                       |   5   |
+| [ ] | `D05 T02 §2`  | Tool-call and plan display                      |   5   |
+| [ ] | `D05 T02 §3`  | Diff review                                     |   5   |
+| [ ] | `D05 T02 §4`  | Apply to editor through undo                    |   6   |
+| [ ] | `D05 T02 §5`  | Elicitation forms                               |   4   |
+| [ ] | `D05 T02 §6`  | Selection actions: explain, rewrite, summarize  |  14   |
+| [ ] | `D05 T02 §7`  | Document actions: translate, extract, summarize |   7   |
+| [ ] | `D05 T02 §8`  | Continue writing with ghost drafts              |   6   |
+| [ ] | `D05 T02 §9`  | Agent title suggestions for untitled tabs       |   4   |
+| [ ] | `D05 T02 §10` | Grants and audit viewer                         |   3   |
+| [ ] | `D06 T01 §1`  | Strategy doc with layers and bars               |   5   |
+| [ ] | `D06 T01 §2`  | Coverage floors enforced in CI                  |   5   |
+| [ ] | `D06 T01 §3`  | Notepad parity UI suites                        |   5   |
+| [ ] | `D06 T01 §4`  | AI surface UI suites                            |   4   |
+| [ ] | `D06 T01 §5`  | Perf budgets enforced in CI                     |   4   |
+| [ ] | `D06 T01 §6`  | Flake policy and quarantine operation           |   5   |
+| [ ] | `D06 T01 §8`  | UI tests use a throwaway data folder            |   5   |
+| [ ] | `D06 T02 §1`  | Scripted agent library                          |   6   |
+| [ ] | `D06 T02 §2`  | Schema pin and drift detection                  |   4   |
+| [ ] | `D06 T02 §3`  | Version matrix (v1 and v2)                      |   4   |
+| [ ] | `D06 T02 §4`  | Adapter compatibility schedule                  |   5   |
+| [ ] | `D05 T03 §1`  | Agent status bar                                |   5   |
+| [ ] | `D05 T03 §2`  | Per-tab pane with document context              |   5   |
+| [ ] | `D05 T03 §3`  | Slash commands                                  |   6   |
+| [ ] | `D05 T03 §4`  | Agent management panel                          |   5   |
+| [ ] | `D05 T03 §5`  | Token usage display                             |   4   |
+| [ ] | `D05 T03 §6`  | AI settings group                               |   3   |
+| [ ] | `D08 T01 §1`  | Kokoro TTS embedded                             |   6   |
+| [ ] | `D08 T01 §2`  | Audio transcode and provisioning                |   4   |
+| [ ] | `D08 T01 §3`  | Whisper STT embedded                            |   5   |
+| [ ] | `D08 T01 §4`  | Provider interface with OpenRouter              |   6   |
+| [ ] | `D08 T02 §1`  | Read-aloud UI with MP3                          |   5   |
+| [ ] | `D08 T02 §2`  | Dictate and transcribe UI                       |   5   |
+| [ ] | `D08 T02 §3`  | Provider settings and consent                   |   5   |
+| [ ] | `D08 T02 §4`  | Voice menus and shortcuts                       |   4   |
+
+> **Moved:** `D06 T01 §7` -- 2026-11-17 to docs/design-contract.md (operator decision: the design is accepted and visual tests are cut to three surface goldens; no popup or dialog goldens are wanted, so there is no capture set left to make deterministic).
 
 ### Phase 4 -- Release: packaging, install, update
 

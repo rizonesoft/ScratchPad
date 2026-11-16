@@ -82,10 +82,12 @@ Why this section exists: the clone claim is proven surface by surface, automatic
 
 **Groomed 2026-10-14:** `tests/UI/ParityGoldenTests.cs` (not `tests/UI/Parity/`) already drives the ten stable reference surfaces as focus-free goldens through `UiCapture.CaptureState` and `UiGolden`; the review register is `docs/parity-review.md`, and menus and in-window dialogs wait on §7.
 
-- -> XREF: D06 T01 §7 -- pins the input mode so the menu and dialog surfaces join the parity goldens.
+**Corrected 2026-11-17:** this section said every surface is compared with its stock capture within the committed tolerance. The operator accepted the design as it stands (`docs/design-contract.md`): `tests/UI/ParityGoldenTests.cs` and the ten `parity-*` goldens are removed, the golden set is the three surface goldens, and the suites here prove Notepad behavior through UIA (labels, enabled state, flows, results), not pixels. The second item is reworded to match; §7 is moved out of the tree.
+
+- -> XREF: D06 T01 §7 -- moved 2026-11-17: no menu or dialog goldens are wanted, so nothing joins this section from it.
 
 - [ ] `tests/UI/Parity/` drives every Notepad surface in the coverage table (`TODO-00-INDEX.md`) through the real UI. Done when: every row maps to a passing suite.
-- [ ] Each suite compares against the `D00 T02 §3` captures within the committed tolerance. Done when: a deliberate deviation fails the suite.
+- [ ] Each suite asserts the behavior its coverage-table row names (labels, enabled state, the flow and its result) through UIA, reading Notepad's behavior from the `D00 T02 §3` captures. Done when: a deliberate behavior deviation fails the suite.
 - [ ] The suites classify into the D00 T02 §8 tiers: background-safe assertions run in the default set, placement premises in `Category=Primary`, physical-input flows in fenced `Category=Interactive` with quiet-hours collection. Done when: every suite names its tier and the default/Primary gates prove the runnable tiers. **Corrected 2026-09-19 (§8 plan review):** was "run in CI on a Windows runner"; CI is build-plus-launch-smoke only since c2c2362, UI proof is local tiers.
 - [ ] Found 2026-09-14: `tests/UI/MainWindowTests.cs` `PollThemeSide` captures without `UiDpi.Enter`, so at 150 percent session DPI the reads virtualize to black; on Conclave-PC `ThemesRenderWithMica` light fails while dark and system pass vacuously. Harden the capture path (PMV2-aware captures or a non-black guard) and re-prove the matrix. Done when: `dotnet test tests/UI --filter ThemesRenderWithMica` passes on the dev box with center pixels verified non-black in all three themes. **Corrected 2026-09-17 (groom):** was "passes on Conclave-PC"; the Conclave-PC VM retired 2026-09-14, so the matrix re-proves on the dev box at 150 percent.
 - [ ] Commit: `"quality: drive Notepad parity in UI suites"`
@@ -131,6 +133,8 @@ Why this section exists: the quarantine procedure from `D00 T02 §5` needs an op
 **Test checkpoint:** Lifecycle demonstrated for real; quarantine growth fails CI; one incident verdict recorded. Cheaper substitute that fails: quarantine as a trash can with no triage.
 
 ## 7. Deterministic Input Mode for Popup and Dialog Goldens
+
+> **Moved:** 2026-11-17 to docs/design-contract.md (operator decision: the design is accepted and visual tests are cut to three surface goldens; no popup or dialog goldens are wanted, so there is no capture set left to make deterministic).
 
 Why this section exists: the 2026-10-14 parity work (`docs/parity-review.md`) added focus-free goldens for every Notepad reference surface (`tests/UI/ParityGoldenTests.cs`, `UiCapture.CaptureState` with popup composition), and three back-to-back runs showed that menus, submenus, and in-window dialogs do not hold still: the keyboard focus ring on the first menu item or the default button appears in some runs and not others, and menu row height switches between about 33 and 41 px. Both follow WinUI's ambient input mode at the moment the flyout or dialog opens, not anything the test sets, so those twelve surfaces stay review captures under `docs/parity-review/` instead of goldens. The same review could not tell from an inactive, off-screen capture whether our light-theme menu really lacks stock's brighter background and border (ours sampled flat 249, stock 252 with a border). -> SOURCE: parity-review-2026-10-14-golden-stability.
 

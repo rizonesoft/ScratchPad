@@ -1,4 +1,4 @@
-﻿# Nightly UI test population fingerprint (D00 T02 §15, D00-T02-S13-PR13).
+# Nightly UI test population fingerprint (D00 T02 §15, D00-T02-S13-PR13).
 # One --list-tests discovery per leg filter; member FQNs sorted unique.
 # Regen: tools/Update-TestFingerprint.ps1 (build first). Review the diff:
 # every membership change stales prior proofs until re-accepted here.
@@ -77,8 +77,6 @@ run-a:
   UI.ExportTests.UntitledShowsSaveFirstNote
   UI.GateAttributionTests.ReusedPidIsNeverAttributedToTheAppAndLinesNameTheExecutable
   UI.GateCalibrationTests.NoPlantKeepsTheGateGreen
-  UI.GoldenComparisonTests.FreshCaptureMatchesGolden
-  UI.GoldenComparisonTests.LeftoverSessionNeverLeaksIntoTheCapture
   UI.GoldenComparisonTests.OnePixelEdgeWobblePassesComparison
   UI.GoldenComparisonTests.TenPixelShiftFailsComparison
   UI.GoldenInventoryTests.EveryCommittedGoldenHasATestAndReachesTheOutput
@@ -178,16 +176,6 @@ run-a:
   UI.OperatorIdleTests.UnforcedRunsNeverConsultTheIdleGate
   UI.OperatorIdleTests.UnreadableIdleTimeFailsClosed
   UI.OperatorIdleTests.ZeroIdleRequirementDisablesTheGate
-  UI.ParityGoldenTests.FirstLineTruncateMatchesGolden
-  UI.ParityGoldenTests.MainLightMatchesGolden
-  UI.ParityGoldenTests.OpenInSettingMatchesGolden
-  UI.ParityGoldenTests.SessionRestoredMatchesGolden
-  UI.ParityGoldenTests.SettingsLightMatchesGolden
-  UI.ParityGoldenTests.StatusBarOffMatchesGolden
-  UI.ParityGoldenTests.StatusCrMatchesGolden
-  UI.ParityGoldenTests.StatusMarkdownFormattedMatchesGolden
-  UI.ParityGoldenTests.TabsMatchesGolden
-  UI.ParityGoldenTests.WhenStartsMatchesGolden
   UI.ProtocolHandlerTests.LinkOpensTheCarriedFile
   UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow
   UI.ProtocolHandlerTests.ProtocolVerbsCycleCleanly
@@ -265,6 +253,7 @@ run-a:
   UI.TabBarTests.DirtyClosePromptsAndCancelKeepsTheTab
   UI.TabBarTests.InitialTabRendersFromModel
   UI.TabBarTests.OverflowShrinksTabsWithoutScrollChrome
+  UI.TabStripGoldenTests.TabStripMatchesGolden
   UI.TemplateTests.BlankNoteOpensCleanEmptyTab
   UI.TemplateTests.DailyJournalOpensExpanded
   UI.TemplateTests.EmptyTitleDisablesSave
@@ -311,16 +300,23 @@ run-a:
   UI.UiLeakBundleTests.ScaleToCapPinsDimensions
   UI.UiLeakBundleTests.ScrubTitleShapes
   UI.UiLeakBundleTests.ScrubTitleTruncates
+  UI.UiPointerGuardTests.EveryClickEntryPointRefusesBackgroundBeforeReadingTheElement
+  UI.UiPointerGuardTests.FailedMoveNeverPresses
   UI.UiPointerGuardTests.HitNamesItsLine
   UI.UiPointerGuardTests.LiveTreeScansClean
   UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard
+  UI.UiPointerGuardTests.PermittedClickMovesBeforeItPresses
+  UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard
   UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard
+  UI.UiPointerGuardTests.RefusedClickNeverMovesOrPresses
   UI.UiPointerGuardTests.SanctionedShapesPassTheGuard
+  UI.UiPointerGuardTests.StaticImportedPointedClickFailsTheGuard
+  UI.UiPointerGuardTests.UnqualifiedLocalHelperIsNotAFlaUiClick
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 311
-run-a-cases: 389
-run-a-case-hash: 3a01dd3676747c54
+run-a-methods: 307
+run-a-cases: 403
+run-a-case-hash: 87de6e77ad349c78
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -395,8 +391,6 @@ run-a-case-rows:
   UI|UI.ExportTests.UntitledShowsSaveFirstNote
   UI|UI.GateAttributionTests.ReusedPidIsNeverAttributedToTheAppAndLinesNameTheExecutable
   UI|UI.GateCalibrationTests.NoPlantKeepsTheGateGreen
-  UI|UI.GoldenComparisonTests.FreshCaptureMatchesGolden
-  UI|UI.GoldenComparisonTests.LeftoverSessionNeverLeaksIntoTheCapture
   UI|UI.GoldenComparisonTests.OnePixelEdgeWobblePassesComparison
   UI|UI.GoldenComparisonTests.TenPixelShiftFailsComparison
   UI|UI.GoldenInventoryTests.EveryCommittedGoldenHasATestAndReachesTheOutput
@@ -542,16 +536,6 @@ run-a-case-rows:
   UI|UI.OperatorIdleTests.UnforcedRunsNeverConsultTheIdleGate
   UI|UI.OperatorIdleTests.UnreadableIdleTimeFailsClosed
   UI|UI.OperatorIdleTests.ZeroIdleRequirementDisablesTheGate
-  UI|UI.ParityGoldenTests.FirstLineTruncateMatchesGolden
-  UI|UI.ParityGoldenTests.MainLightMatchesGolden
-  UI|UI.ParityGoldenTests.OpenInSettingMatchesGolden
-  UI|UI.ParityGoldenTests.SessionRestoredMatchesGolden
-  UI|UI.ParityGoldenTests.SettingsLightMatchesGolden
-  UI|UI.ParityGoldenTests.StatusBarOffMatchesGolden
-  UI|UI.ParityGoldenTests.StatusCrMatchesGolden
-  UI|UI.ParityGoldenTests.StatusMarkdownFormattedMatchesGolden
-  UI|UI.ParityGoldenTests.TabsMatchesGolden
-  UI|UI.ParityGoldenTests.WhenStartsMatchesGolden
   UI|UI.ProtocolHandlerTests.LinkOpensTheCarriedFile
   UI|UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow(link: "scratchpad://")
   UI|UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow(link: "scratchpad://relative/x.txt")
@@ -644,6 +628,7 @@ run-a-case-rows:
   UI|UI.TabBarTests.DirtyClosePromptsAndCancelKeepsTheTab
   UI|UI.TabBarTests.InitialTabRendersFromModel
   UI|UI.TabBarTests.OverflowShrinksTabsWithoutScrollChrome
+  UI|UI.TabStripGoldenTests.TabStripMatchesGolden
   UI|UI.TemplateTests.BlankNoteOpensCleanEmptyTab
   UI|UI.TemplateTests.DailyJournalOpensExpanded
   UI|UI.TemplateTests.EmptyTitleDisablesSave
@@ -694,21 +679,46 @@ run-a-case-rows:
   UI|UI.UiLeakBundleTests.ScrubTitleShapes(title: "login token=abc123 failed", expected: "login token=*** failed")
   UI|UI.UiLeakBundleTests.ScrubTitleShapes(title: "plain title", expected: "plain title")
   UI|UI.UiLeakBundleTests.ScrubTitleTruncates
+  UI|UI.UiPointerGuardTests.EveryClickEntryPointRefusesBackgroundBeforeReadingTheElement
+  UI|UI.UiPointerGuardTests.FailedMoveNeverPresses
   UI|UI.UiPointerGuardTests.HitNamesItsLine
   UI|UI.UiPointerGuardTests.LiveTreeScansClean
+  UI|UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard(source: "class Q\n{\n    void M(E e) { e.\n        DoubleCl"···, line: 3)
   UI|UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard(source: "class Q\n{\n    void M(P p) { Mouse.Position\n    "···, line: 3)
   UI|UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard(source: "class Q\n{\n    void M(P p) { Mouse.\n        Move"···, line: 3)
   UI|UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard(source: "class Q\r\n{\r\n    void M() { NativeMethods.SetCu"···, line: 3)
+  UI|UI.UiPointerGuardTests.PermittedClickMovesBeforeItPresses
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "FlaUI.Core.Input.Mouse.Click(point);")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "Mouse.Click(point, MouseButton.Left);")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "Mouse.DoubleClick(point, MouseButton.Left);")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "Mouse.LeftClick(point);")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "Mouse.LeftDoubleClick(point);")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "Mouse.RightClick(point);")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "Mouse.RightDoubleClick(point);")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "TabItemAt(window, 1).DoubleClick();")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "element.Click();")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "element.DoubleClick();")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "element.RightClick();")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "element.RightDoubleClick();")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "element?.Click();")
+  UI|UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard(statement: "element?.DoubleClick();")
   UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { [System.Runtime.InteropServices.DllImpor"···)
   UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M() { FlaUI.Core.Input.Mouse.Positi"···)
   UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M() { Mouse . MoveTo (new System.Dr"···)
   UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M() { NativeMethods.SetCursorPos(1,"···)
   UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M(E e) { Mouse.MoveTo(e.GetClickabl"···)
   UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M(System.Drawing.Point p) { Mouse.P"···)
+  UI|UI.UiPointerGuardTests.RefusedClickNeverMovesOrPresses(background: False, reason: "Operator active")
+  UI|UI.UiPointerGuardTests.RefusedClickNeverMovesOrPresses(background: False, reason: "Outside foreground window")
+  UI|UI.UiPointerGuardTests.RefusedClickNeverMovesOrPresses(background: True, reason: null)
   UI|UI.UiPointerGuardTests.SanctionedShapesPassTheGuard(snippet: "// Mouse.MoveTo(e.GetClickablePoint()) in a commen"···)
   UI|UI.UiPointerGuardTests.SanctionedShapesPassTheGuard(snippet: "class Q { bool M(System.Drawing.Point p) => Mouse."···)
+  UI|UI.UiPointerGuardTests.SanctionedShapesPassTheGuard(snippet: "class Q { void M() { Mouse.Click(MouseButton.Left)"···)
   UI|UI.UiPointerGuardTests.SanctionedShapesPassTheGuard(snippet: "class Q { void M() { Mouse.Down(MouseButton.Left);"···)
+  UI|UI.UiPointerGuardTests.SanctionedShapesPassTheGuard(snippet: "class Q { void M(E e) { UiPointer.Click(e); UiPoin"···)
   UI|UI.UiPointerGuardTests.SanctionedShapesPassTheGuard(snippet: "class Q { void M(E e) { UiPointer.MoveTo(e); } }")
+  UI|UI.UiPointerGuardTests.StaticImportedPointedClickFailsTheGuard
+  UI|UI.UiPointerGuardTests.UnqualifiedLocalHelperIsNotAFlaUiClick
   UI|UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI|UI.UntitledTitleTests.TypingFirstLineRenamesTab
   UI|case UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser("MenuEditDefineBing", true)
@@ -794,18 +804,38 @@ run-a-case-rows:
   UI|case UI.UiLeakBundleTests.ScaleToCapPinsDimensions(int32:900, int32:650, int32:900, int32:650)
   UI|case UI.UiLeakBundleTests.ScrubTitleShapes("login token=abc123 failed", "login token=*** failed")
   UI|case UI.UiLeakBundleTests.ScrubTitleShapes("plain title", "plain title")
+  UI|case UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard("class Q\n{\n    void M(E e) { e.\n        DoubleClick(); }\n}\n", int32:3)
   UI|case UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard("class Q\n{\n    void M(P p) { Mouse.Position\n        = p; }\n}\n", int32:3)
   UI|case UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard("class Q\n{\n    void M(P p) { Mouse.\n        MoveTo(p); }\n}\n", int32:3)
   UI|case UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard("class Q\r\n{\r\n    void M() { NativeMethods.SetCursorPos\r\n        (1, 2); }\r\n}\r\n", int32:3)
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("FlaUI.Core.Input.Mouse.Click(point);")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("Mouse.Click(point, MouseButton.Left);")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("Mouse.DoubleClick(point, MouseButton.Left);")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("Mouse.LeftClick(point);")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("Mouse.LeftDoubleClick(point);")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("Mouse.RightClick(point);")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("Mouse.RightDoubleClick(point);")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("TabItemAt(window, 1).DoubleClick();")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("element.Click();")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("element.DoubleClick();")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("element.RightClick();")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("element.RightDoubleClick();")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("element?.Click();")
+  UI|case UI.UiPointerGuardTests.PlantedElementOrPointedClickFailsTheGuard("element?.DoubleClick();")
   UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { [System.Runtime.InteropServices.DllImport(\"user32.dll\")] static extern bool SetCursorPos(int x, int y); }")
   UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M() { FlaUI.Core.Input.Mouse.Position=new System.Drawing.Point(1, 2); } }")
   UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M() { Mouse . MoveTo (new System.Drawing.Point(1, 2)); } }")
   UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M() { NativeMethods.SetCursorPos(1, 2); } }")
   UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M(E e) { Mouse.MoveTo(e.GetClickablePoint()); } }")
   UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M(System.Drawing.Point p) { Mouse.Position = p; } }")
+  UI|case UI.UiPointerGuardTests.RefusedClickNeverMovesOrPresses(false, "Operator active")
+  UI|case UI.UiPointerGuardTests.RefusedClickNeverMovesOrPresses(false, "Outside foreground window")
+  UI|case UI.UiPointerGuardTests.RefusedClickNeverMovesOrPresses(true, null)
   UI|case UI.UiPointerGuardTests.SanctionedShapesPassTheGuard("// Mouse.MoveTo(e.GetClickablePoint()) in a comment is not a move")
   UI|case UI.UiPointerGuardTests.SanctionedShapesPassTheGuard("class Q { bool M(System.Drawing.Point p) => Mouse.Position == p; }")
+  UI|case UI.UiPointerGuardTests.SanctionedShapesPassTheGuard("class Q { void M() { Mouse.Click(MouseButton.Left); Mouse.DoubleClick(MouseButton.Left); } }")
   UI|case UI.UiPointerGuardTests.SanctionedShapesPassTheGuard("class Q { void M() { Mouse.Down(MouseButton.Left); Mouse.Up(MouseButton.Left); Mouse.Scroll(2); } }")
+  UI|case UI.UiPointerGuardTests.SanctionedShapesPassTheGuard("class Q { void M(E e) { UiPointer.Click(e); UiPointer.DoubleClick(e); UiPointer.RightClick(e); } }")
   UI|case UI.UiPointerGuardTests.SanctionedShapesPassTheGuard("class Q { void M(E e) { UiPointer.MoveTo(e); } }")
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate

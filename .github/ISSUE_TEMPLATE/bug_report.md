@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Something in ScratchPad behaves differently from Windows 11 Notepad or breaks
+about: Something in ScratchPad breaks or behaves differently from what Windows 11 Notepad does
 title: "[bug] "
 labels: bug
 ---
@@ -17,7 +17,7 @@ labels: bug
 
 ## What you expected
 
-<!-- For Notepad parity, say what Windows 11 Notepad does in the same steps. -->
+<!-- Where Notepad has the same feature, say what Windows 11 Notepad does in the same steps. -->
 
 ## Build
 

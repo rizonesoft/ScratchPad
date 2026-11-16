@@ -37,7 +37,7 @@ Run these and paste their results into the pull request template:
 1. `dotnet build src/ScratchPad.slnx` passes with no warnings.
 2. `dotnet test src/ScratchPad.slnx` passes (or the neutral filter, when your change cannot touch the app, saying so).
 3. `py scripts/todo-graph.py validate` shows 0 fatal, and `py scripts/todo-graph.py plan --check` is current (run `plan --sync` after any TODO edit).
-4. Anything that changes Notepad behavior cites the Windows 11 Notepad capture it matches (`resources/baseline/`); anything that changes the agent protocol cites the [Agent Client Protocol](https://agentclientprotocol.com/get-started/agents) text it follows.
+4. Anything that changes Notepad behavior says what Windows 11 Notepad does in the same steps (the captures in `resources/baseline/stock/` are the reference for behavior, not a pixel target: `docs/design-contract.md`); anything that changes the agent protocol cites the [Agent Client Protocol](https://agentclientprotocol.com/get-started/agents) text it follows.
 
 The pre-commit hook runs the validator on every commit; never bypass it with `--no-verify`.
 

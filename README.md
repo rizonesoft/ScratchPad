@@ -1,6 +1,8 @@
+<p align="center"><img src="resources/brand/readme-banner.png" alt="ScratchPad: Windows 11 Notepad, with Claude Code and Codex inside" width="880"></p>
+
 # ScratchPad
 
-Windows 11 Notepad, exact down to the status bar, plus your own AI agents (Claude Code and Codex) beside the editor, with no subscription nag.
+The Windows 11 Notepad you know, down to the status bar, plus your own AI agents (Claude Code and Codex) beside the editor, with no subscription nag.
 
 [![Build](https://github.com/rizonesoft/ScratchPad/actions/workflows/build.yml/badge.svg)](https://github.com/rizonesoft/ScratchPad/actions/workflows/build.yml)
 [![Plan](https://github.com/rizonesoft/ScratchPad/actions/workflows/plan.yml/badge.svg)](https://github.com/rizonesoft/ScratchPad/actions/workflows/plan.yml)
@@ -17,7 +19,7 @@ People who live in Notepad and already pay for an AI agent: you want the editor 
 
 What it does today, and what is on the way:
 
-- **Notepad, 1:1.** Tabs and windows, menus, find and replace, go to, word wrap, zoom, fonts, encodings and line endings, Markdown tabs, a live status bar, and a settings page, reproduced in C# and WinUI 3 against captured Windows 11 Notepad behavior (printing is still in progress).
+- **Everything Notepad does.** Tabs and windows, menus, find and replace, go to, word wrap, zoom, fonts, encodings and line endings, Markdown tabs, a live status bar, and a settings page, reproduced in C# and WinUI 3 against captured Windows 11 Notepad behavior (printing is still in progress).
 - **A few extras.** Tools carries document statistics, snapshots, templates, export, and file locking.
 - **Nothing lost.** Tabs restore exactly where you left them, unsaved edits included, and closing a window never discards a change.
 - **Encrypted notes.** A note can carry a password; the file format is documented in [docs/encrypted-notes.md](docs/encrypted-notes.md).
@@ -85,7 +87,8 @@ It is not a subscription. Saying it twice because it bears repeating.
 | ---- | ---------- |
 | `src/` | The app (WinUI 3 shell plus editor, ACP, agents) |
 | `tests/` | Unit, smoke, UI, and protocol suites (backbone: `D00 T02`) |
-| `resources/baseline/` | Captured Notepad baseline for parity checks |
+| `resources/baseline/` | Stock Notepad captures (behavior reference) and the three goldens of our own look |
+| `resources/brand/` | The ScratchPad identity: icon masters, wordmark, README banner, social preview ([design contract](docs/design-contract.md)) |
 | `todo/` | The live execution plan. Start here. |
 | `scripts/` | The TODO graph (`todo-graph.py`, stdlib-only) and the subagent routing check (`agent_routing.py`) |
 | `tools/` | Provisioning, launch, build evidence and the test-population check, and the README capture |
