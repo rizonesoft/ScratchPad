@@ -2,6 +2,9 @@ using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Input;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace UI;
 
@@ -16,6 +19,37 @@ namespace UI;
 // The source guard (UiPointerGuardTests) keeps raw moves out of the suite.
 internal static partial class UiPointer
 {
+    // D00 T12 section 3: refuse before even reading a point in a background
+    // run. This uses the same foreground-window and forced-run idle gate as discovery.
+    internal static void Click(AutomationElement element) =>
+        ClickCore(() => MoveTo(element), () => Mouse.Click(MouseButton.Left),
+            UiLaunch.IsBackground(), () => UiQuietHours.SkipUnlessForegroundFree(DateTime.Now));
+
+    internal static void DoubleClick(AutomationElement element) =>
+        ClickCore(() => MoveTo(element), () => Mouse.DoubleClick(MouseButton.Left),
+            UiLaunch.IsBackground(), () => UiQuietHours.SkipUnlessForegroundFree(DateTime.Now));
+
+    internal static void RightClick(AutomationElement element) =>
+        ClickCore(() => MoveTo(element), () => Mouse.Click(MouseButton.Right),
+            UiLaunch.IsBackground(), () => UiQuietHours.SkipUnlessForegroundFree(DateTime.Now));
+
+    internal static void ClickCore(Action move, Action press, bool background, Func<string?> foregroundRefusal)
+    {
+        if (background)
+        {
+            throw new InvalidOperationException("UiPointer: physical clicks are forbidden in a background run.");
+        }
+
+        string? reason = foregroundRefusal();
+        if (reason is not null)
+        {
+            throw new InvalidOperationException($"UiPointer: physical click refused: {reason}");
+        }
+
+        move();
+        press();
+    }
+
     // The element's clickable point in physical pixels.
     internal static Point ClickablePoint(AutomationElement element)
     {
@@ -200,6 +234,59 @@ internal static partial class UiPointer
         foreach (Match match in RawMove().Matches(code))
         {
             int line = code.AsSpan(0, match.Index).Count('\n');
+            hits.Add($"{path}:{line + 1}: {lines[line].Trim()}");
+        }
+
+        // Parse click calls so strings/comments and multiline receivers cannot
+        // confuse the guard. Roslyn is already pinned by the UI guard suite.
+        var root = CSharpSyntaxTree.ParseText(code).GetRoot();
+        foreach (var call in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            string? method = call.Expression switch
+            {
+                MemberAccessExpressionSyntax access => access.Name.Identifier.ValueText,
+                MemberBindingExpressionSyntax binding => binding.Name.Identifier.ValueText,
+                IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+                _ => null,
+            };
+            if (method is not ("Click" or "DoubleClick" or "LeftClick" or "LeftDoubleClick" or "RightClick" or "RightDoubleClick"))
+            {
+                continue;
+            }
+
+            string receiver = call.Expression is MemberAccessExpressionSyntax member
+                ? string.Concat(member.Expression.DescendantTokens().Select(token => token.Text)) : string.Empty;
+            if (call.Expression is IdentifierNameSyntax)
+            {
+                bool importsMouse = root.DescendantNodes().OfType<UsingDirectiveSyntax>().Any(usingDirective =>
+                    usingDirective.StaticKeyword.RawKind == (int)SyntaxKind.StaticKeyword
+                    && usingDirective.Name?.ToString() is "FlaUI.Core.Input.Mouse" or "global::FlaUI.Core.Input.Mouse");
+                if (!importsMouse)
+                {
+                    continue;
+                }
+
+                receiver = "Mouse";
+            }
+            if (receiver is "UiPointer" or "UI.UiPointer" or "global::UI.UiPointer"
+                && method is "Click" or "DoubleClick" or "RightClick")
+            {
+                continue;
+            }
+
+            if (receiver is "Mouse" or "FlaUI.Core.Input.Mouse" or "global::FlaUI.Core.Input.Mouse"
+                && method is "Click" or "DoubleClick"
+                && call.ArgumentList.Arguments.Count == 1)
+            {
+                string argument = string.Concat(call.ArgumentList.Arguments[0].Expression.DescendantTokens().Select(token => token.Text));
+                if (argument is "MouseButton.Left" or "MouseButton.Right" or "MouseButton.Middle"
+                    or "FlaUI.Core.Input.MouseButton.Left" or "FlaUI.Core.Input.MouseButton.Right" or "FlaUI.Core.Input.MouseButton.Middle")
+                {
+                    continue;
+                }
+            }
+
+            int line = code.AsSpan(0, call.SpanStart).Count('\n');
             hits.Add($"{path}:{line + 1}: {lines[line].Trim()}");
         }
 

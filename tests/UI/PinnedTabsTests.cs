@@ -30,9 +30,9 @@ public sealed class PinnedTabsTests
         {
             UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true);
             Assert.Equal(2, WaitForTabCount(window, 2));
-            TabItemAt(window, 1).DoubleClick();
+            UiPointer.DoubleClick(TabItemAt(window, 1));
             Assert.NotNull(WaitForPin(window, 1));
-            TabItemAt(window, 1).DoubleClick();
+            UiPointer.DoubleClick(TabItemAt(window, 1));
             Assert.True(WaitForPinGone(window, 1, TimeSpan.FromSeconds(10)));
         }
         finally
@@ -62,7 +62,7 @@ public sealed class PinnedTabsTests
                 {
                     Assert.Equal(2, WaitForTabCount(window, 2));
                     WaitForTabName(window, 1, TabAccessibilityName.For("persist13.txt", isDirty: false));
-                    TabItemAt(window, 1).DoubleClick();
+                    UiPointer.DoubleClick(TabItemAt(window, 1));
                     Assert.Contains(file, WaitForPinnedFiles(file));
                     Assert.NotNull(WaitForPin(window, 1));
                 }
@@ -118,9 +118,9 @@ public sealed class PinnedTabsTests
             try
             {
                 Assert.Equal(4, WaitForTabCount(window, 4));
-                TabItemAt(window, 3).DoubleClick();
+                UiPointer.DoubleClick(TabItemAt(window, 3));
                 Assert.NotNull(WaitForPin(window, 3));
-                TabItemAt(window, 1).RightClick();
+                UiPointer.RightClick(TabItemAt(window, 1));
                 var closeOthers = WaitForMenuItem(window, "Close other tabs");
                 Assert.NotNull(closeOthers);
                 closeOthers.Invoke();
@@ -163,9 +163,9 @@ public sealed class PinnedTabsTests
             try
             {
                 Assert.Equal(4, WaitForTabCount(window, 4));
-                TabItemAt(window, 2).DoubleClick();
+                UiPointer.DoubleClick(TabItemAt(window, 2));
                 Assert.NotNull(WaitForPin(window, 2));
-                TabItemAt(window, 1).RightClick();
+                UiPointer.RightClick(TabItemAt(window, 1));
                 var closeRight = WaitForMenuItem(window, "Close tabs to the right");
                 Assert.NotNull(closeRight);
                 closeRight.Invoke();
@@ -209,7 +209,7 @@ public sealed class PinnedTabsTests
             try
             {
                 Assert.Equal(4, WaitForTabCount(window, 4));
-                TabItemAt(window, 2).DoubleClick();
+                UiPointer.DoubleClick(TabItemAt(window, 2));
                 Assert.NotNull(WaitForPin(window, 2));
                 Assert.Contains(b, WaitForPinnedFiles(b));
                 SelectTab(window, 2);

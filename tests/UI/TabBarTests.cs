@@ -438,7 +438,7 @@ public sealed class TabBarTests
     static void ContextMenuDrives(Window window)
     {
         // The four items match live Notepad exactly.
-        TabItemAt(window, 0).RightClick();
+        UiPointer.RightClick(TabItemAt(window, 0));
         Assert.NotNull(WaitForMenuItem(window, "New tab"));
         Assert.NotNull(WaitForMenuItem(window, "Close tab"));
         Assert.NotNull(WaitForMenuItem(window, "Close other tabs"));
@@ -448,7 +448,7 @@ public sealed class TabBarTests
 
         // Close-right hits the dirty CCC tab, so the prompt appears and
         // Don't-save takes it; the survivors keep their names.
-        TabItemAt(window, 1).RightClick();
+        UiPointer.RightClick(TabItemAt(window, 1));
         var closeRight = WaitForMenuItem(window, "Close tabs to the right");
         Assert.NotNull(closeRight);
         closeRight.Invoke();
@@ -469,14 +469,14 @@ public sealed class TabBarTests
         SelectTab(window, 1);
         ContentBox(window).Text = string.Empty;
         WaitForTabName(window, 1, TabAccessibilityName.For("Untitled", isDirty: false));
-        TabItemAt(window, 0).RightClick();
+        UiPointer.RightClick(TabItemAt(window, 0));
         var closeOthers = WaitForMenuItem(window, "Close other tabs");
         Assert.NotNull(closeOthers);
         closeOthers.Invoke();
         Assert.Equal(1, WaitForTabCount(window, 1));
         Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), TabItemAt(window, 0).Name);
 
-        TabItemAt(window, 0).RightClick();
+        UiPointer.RightClick(TabItemAt(window, 0));
         var newTab = WaitForMenuItem(window, "New tab");
         Assert.NotNull(newTab);
         newTab.Invoke();

@@ -86,7 +86,7 @@ internal static class UiCapture
         }
         else
         {
-            gear.Click();
+            UiPointer.Click(gear);
         }
 
         deadline = DateTime.UtcNow.AddSeconds(10);

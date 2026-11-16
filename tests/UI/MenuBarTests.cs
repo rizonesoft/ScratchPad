@@ -1308,7 +1308,7 @@ public sealed class MenuBarTests
         }
         else
         {
-            sub.Click();
+            UiPointer.Click(sub);
         }
 
         Thread.Sleep(600);
@@ -1343,7 +1343,7 @@ public sealed class MenuBarTests
         Assert.NotNull(item);
         if (MouseOnlyItems.Contains(itemId))
         {
-            item.Click();
+            UiPointer.Click(item);
         }
         else
         {
@@ -1365,7 +1365,7 @@ public sealed class MenuBarTests
         }
         else
         {
-            item.Click();
+            UiPointer.Click(item);
         }
     }
 
@@ -1615,7 +1615,7 @@ public sealed class MenuBarTests
         }
         else
         {
-            combo.Click();
+            UiPointer.Click(combo);
         }
 
         Thread.Sleep(700);
@@ -1719,7 +1719,7 @@ public sealed class MenuBarTests
         }
         else
         {
-            item.Click();
+            UiPointer.Click(item);
         }
 
         Thread.Sleep(400);

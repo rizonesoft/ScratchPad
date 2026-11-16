@@ -542,7 +542,7 @@ public sealed class StatusBarTests
                 string[] before = ids.Select(id => SegmentName(window, id)).ToArray();
                 foreach (string id in ids)
                 {
-                    Segment(window, id).Click();
+                    UiPointer.Click(Segment(window, id));
                     Thread.Sleep(300);
                 }
 

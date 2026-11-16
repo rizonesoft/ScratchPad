@@ -982,7 +982,7 @@ public sealed class SettingsPageTests
         }
         else
         {
-            item.Click();
+            UiPointer.Click(item);
         }
     }
 

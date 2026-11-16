@@ -268,7 +268,7 @@ public sealed class LaunchTests
             try
             {
                 var dialog = WaitForDialog(window, "CreateFileDialog");
-                dialog.Click();
+                UiPointer.Click(dialog);
                 Thread.Sleep(500);
                 for (int i = 0; i < 20; i++)
                 {

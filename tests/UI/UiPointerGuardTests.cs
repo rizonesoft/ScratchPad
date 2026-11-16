@@ -7,6 +7,7 @@ namespace UI;
 // up-left of its target on a scaled display (the 2026-10-03 hover miss),
 // so the guard fails planted raw moves, passes the sanctioned shapes, and
 // scans the live tree clean.
+[Collection("UI tests")]
 public sealed class UiPointerGuardTests
 {
     [Theory]
@@ -24,10 +25,33 @@ public sealed class UiPointerGuardTests
     }
 
     [Theory]
+    [InlineData("element.Click();")]
+    [InlineData("element.DoubleClick();")]
+    [InlineData("element.RightClick();")]
+    [InlineData("element.RightDoubleClick();")]
+    [InlineData("TabItemAt(window, 1).DoubleClick();")]
+    [InlineData("Mouse.Click(point, MouseButton.Left);")]
+    [InlineData("Mouse.DoubleClick(point, MouseButton.Left);")]
+    [InlineData("Mouse.RightClick(point);")]
+    [InlineData("Mouse.LeftClick(point);")]
+    [InlineData("Mouse.LeftDoubleClick(point);")]
+    [InlineData("Mouse.RightDoubleClick(point);")]
+    [InlineData("element?.Click();")]
+    [InlineData("element?.DoubleClick();")]
+    [InlineData("FlaUI.Core.Input.Mouse.Click(point);")]
+    public void PlantedElementOrPointedClickFailsTheGuard(string statement)
+    {
+        string hit = Assert.Single(UiPointer.FindRawMoves("class Q { void M() { " + statement + " } }", "tests/UI/Plant.cs"));
+        Assert.StartsWith("tests/UI/Plant.cs:1: ", hit, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("class Q { void M(E e) { UiPointer.MoveTo(e); } }")]
     [InlineData("class Q { void M() { Mouse.Down(MouseButton.Left); Mouse.Up(MouseButton.Left); Mouse.Scroll(2); } }")]
     [InlineData("class Q { bool M(System.Drawing.Point p) => Mouse.Position == p; }")]
     [InlineData("// Mouse.MoveTo(e.GetClickablePoint()) in a comment is not a move")]
+    [InlineData("class Q { void M(E e) { UiPointer.Click(e); UiPointer.DoubleClick(e); UiPointer.RightClick(e); } }")]
+    [InlineData("class Q { void M() { Mouse.Click(MouseButton.Left); Mouse.DoubleClick(MouseButton.Left); } }")]
     public void SanctionedShapesPassTheGuard(string snippet)
     {
         Assert.Empty(UiPointer.FindRawMoves(snippet, "tests/UI/Clean.cs"));
@@ -38,6 +62,7 @@ public sealed class UiPointerGuardTests
     [InlineData("class Q\n{\n    void M(P p) { Mouse.\n        MoveTo(p); }\n}\n", 3)]
     [InlineData("class Q\n{\n    void M(P p) { Mouse.Position\n        = p; }\n}\n", 3)]
     [InlineData("class Q\r\n{\r\n    void M() { NativeMethods.SetCursorPos\r\n        (1, 2); }\r\n}\r\n", 3)]
+    [InlineData("class Q\n{\n    void M(E e) { e.\n        DoubleClick(); }\n}\n", 3)]
     public void MultilineRawMoveFailsTheGuard(string source, int line)
     {
         string hit = Assert.Single(UiPointer.FindRawMoves(source, "tests/UI/Plant.cs"));
@@ -45,10 +70,75 @@ public sealed class UiPointerGuardTests
     }
 
     [Fact]
+    public void StaticImportedPointedClickFailsTheGuard()
+    {
+        const string source = "using static FlaUI.Core.Input.Mouse; class Q { void M() { Click(point, MouseButton.Left); } }";
+        Assert.Single(UiPointer.FindRawMoves(source, "tests/UI/Plant.cs"));
+    }
+
+    [Fact]
+    public void UnqualifiedLocalHelperIsNotAFlaUiClick()
+    {
+        const string source = "class Q { void M(E e) { LeftClick(e); } void LeftClick(E e) { UiPointer.Click(e); } }";
+        Assert.Empty(UiPointer.FindRawMoves(source, "tests/UI/Clean.cs"));
+    }
+
+    [Fact]
     public void HitNamesItsLine()
     {
         const string source = "class Q\n{\n    void M(P p) { Mouse.Position = p; }\n}\n";
         Assert.Equal(["tests/UI/Plant.cs:3: void M(P p) { Mouse.Position = p; }"], UiPointer.FindRawMoves(source, "tests/UI/Plant.cs"));
+    }
+
+    [Theory]
+    [InlineData(true, null)]
+    [InlineData(false, "Outside foreground window")]
+    [InlineData(false, "Operator active")]
+    public void RefusedClickNeverMovesOrPresses(bool background, string? reason)
+    {
+        int moves = 0;
+        int presses = 0;
+        int probes = 0;
+        Assert.Throws<InvalidOperationException>(() => UiPointer.ClickCore(
+            () => moves++, () => presses++, background, () => { probes++; return reason; }));
+        Assert.Equal(0, moves);
+        Assert.Equal(0, presses);
+        Assert.Equal(background ? 0 : 1, probes);
+    }
+
+    [Fact]
+    public void PermittedClickMovesBeforeItPresses()
+    {
+        var events = new List<string>();
+        UiPointer.ClickCore(() => events.Add("move"), () => events.Add("press"), false, () => null);
+        Assert.Equal(["move", "press"], events);
+    }
+
+    [Fact]
+    public void EveryClickEntryPointRefusesBackgroundBeforeReadingTheElement()
+    {
+        string? previous = Environment.GetEnvironmentVariable("SCRATCHPAD_BACKGROUND");
+        try
+        {
+            Environment.SetEnvironmentVariable("SCRATCHPAD_BACKGROUND", "1");
+            // Null would fail in MoveTo if the runtime gate were bypassed.
+            Assert.Contains("background", Assert.Throws<InvalidOperationException>(() => UiPointer.Click(null!)).Message, StringComparison.Ordinal);
+            Assert.Contains("background", Assert.Throws<InvalidOperationException>(() => UiPointer.DoubleClick(null!)).Message, StringComparison.Ordinal);
+            Assert.Contains("background", Assert.Throws<InvalidOperationException>(() => UiPointer.RightClick(null!)).Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("SCRATCHPAD_BACKGROUND", previous);
+        }
+    }
+
+    [Fact]
+    public void FailedMoveNeverPresses()
+    {
+        int presses = 0;
+        Assert.Throws<InvalidOperationException>(() => UiPointer.ClickCore(
+            () => throw new InvalidOperationException("move failed"), () => presses++, false, () => null));
+        Assert.Equal(0, presses);
     }
 
     [Fact]
