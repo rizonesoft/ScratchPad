@@ -1,4 +1,4 @@
 interface:
   display_name: "Independent review"
-  short_description: "Review by the pinned reviewer (Gemini 4 for Codex work), with failover and a recorded round."
-  default_prompt: "Get an independent review of this change with scripts/review-dispatch.py --writer codex, then verify and act on every finding. Exit 1 means no review, never an approval."
+  short_description: "A reviewer of another model family reviews your work on the pinned schedule."
+  default_prompt: "Check .conclave/reviewers.toml for the route and schedule, then run scripts/review-dispatch.py with --writer codex. If the pin has no codex route the dispatcher refuses: hand the change to an agent the pin routes rather than shipping it unreviewed."

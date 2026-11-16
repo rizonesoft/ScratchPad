@@ -1,6 +1,6 @@
 # Plan review prompt
 
-Copy this into a scratch file, fill in the placeholders, delete the lines that do not apply, and pass it to `scripts/review-dispatch.py --kind plan --candidate <FULL_SHA of the commit that holds the section as it will be built> --writer claude --writer-model <exact-model-version> --prompt <file> --record docs/reviews/<NN-domain>/D<NN>-T<NN>-s<N>.md`. It runs once per section, after the section is validated and before any code is written, and is not counted as a round. The pin's `[schedule] plan` step sets its effort and appends the `plan` lens.
+Fill this with `python scripts/review-prompt.py --kind plan --candidate <FULL_SHA> --ref "<DNN TNN §N>" --governing <file> --out <scratch file>` (`--help` lists every option, and it refuses a placeholder it has no value for), or by hand: copy this into a scratch file, fill in the placeholders, delete the lines that do not apply, and pass it to `scripts/review-dispatch.py --kind plan --candidate <FULL_SHA of the commit that holds the section as it will be built> --writer <claude|codex|agy> --prompt <file> --record <receipts>/<NN-domain>/D<NN>-T<NN>-s<N>.md` (`<receipts>` being `layout.receipts` in `todo/plan.json`, `docs/reviews` by default). It runs once per section, after the section is validated and before any code is written, and is not counted as a round. The pin's `[schedule] plan` step sets its effort and appends the `plan` lens. Under a pin with `policy = "three-pass"` the section then keeps the pin committed at this candidate, so commit the pin first; the appended block asks for one `LENS <name>:` line per lens; and when the pin has `[[schedule.conditional]]` entries that name plan, add `--paths <file> ...` with the files the section will change.
 
 ---
 
@@ -27,7 +27,3 @@ Proportionality: list only gaps that arise in this repository's real operation (
 ## Reply format
 
 A numbered list of gaps, each tagged `P1` (the feature would ship incomplete, wrong or unproven), `P2` (a real gap with a narrower reach) or `P3` (wording, an unlikely edge case), with the section line it concerns and what the section must add or correct. Then a line naming the highest severity, `HIGHEST: P1`, `HIGHEST: P2`, `HIGHEST: P3` or `HIGHEST: none`. Then `PLAN: complete` when the list is empty or `PLAN: gaps` when it is not. Then a final line: `OVERALL: approve` or `OVERALL: needs-attention`. If you could not read the candidate at all, say why in one line and end with `OVERALL: blocked` instead: that is not a review.
-
-## Antigravity read-only access
-
-Use native file-reading tools for source and documents. The session permission file allows only these shell command forms: `git status --short`, `git rev-parse HEAD`, `git --no-pager show --no-ext-diff --no-textconv <HEAD-or-full-SHA>`, and `git --no-pager diff --no-ext-diff --no-textconv <HEAD-or-full-SHA-or-two-SHA-range>`. Use exactly these forms, without a shell prefix, pipelines or extra options. File writes and edits are denied. A denied required action means `OVERALL: blocked` (or `COMPLETION: blocked` for completion), never approval.

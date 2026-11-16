@@ -9,7 +9,7 @@ Ship rows until nothing runnable is left, then close out. With no phase named, s
 
 The operator is present but is not the engine: decide, verify and fix what you can. If the operator says stop or pause, stop at once.
 
-Read `docs/writer-campaigns.md` and acquire the codex guard with the current session id before starting a campaign. Arm only this harness's heartbeat. A named phase uses `--scope phase --phase N`; the whole plan uses `--scope plan`. Stop or pause ends the guard and cancels its heartbeat immediately.
+Read `docs/writer-campaigns.md` and acquire the agy guard with the current session id before starting a campaign. Arm only this harness's heartbeat. A named phase uses `--scope phase --phase N`; the whole plan uses `--scope plan`. Stop or pause ends the guard and cancels its heartbeat immediately.
 
 ## 0. Open the run
 

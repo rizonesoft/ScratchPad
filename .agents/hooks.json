@@ -1,0 +1,11 @@
+{
+  "campaign-guard": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python ../scripts/agy_campaign.py hook",
+        "timeout": 60
+      }
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "files": {
+    ".conclave/.gitignore": {
+      "kit": "base",
+      "sha256": "4ba605f63bc9cf3695e61c19f7cfa1b36a70b49c2084900f988bedc031103991"
+    },
+    ".conclave/local.example.toml": {
+      "kit": "base",
+      "sha256": "f956b266dfccdc006e803ff2d372acbd481651ae23bf427e5826406ae489db2c"
+    }
+  },
+  "kits": {
+    "base": {
+      "agents": [
+        "agy",
+        "claude",
+        "codex"
+      ],
+      "host": null,
+      "sdk_commit": "987052715b2056ffb5c2bde979a6325160c71b63"
+    }
+  },
+  "schema_version": 1
+}

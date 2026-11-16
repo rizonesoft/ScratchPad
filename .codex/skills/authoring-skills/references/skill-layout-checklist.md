@@ -29,7 +29,7 @@ eferences/, executable helpers in scripts/, assets in ssets/.
 
 ## Reusable Kit
 
-- [ ] kits/base/templates/ is updated if new projects should inherit the skill.
+- [ ] The matching Conclave-SDK kit's templates/ has a copy if other projects should start from the skill.
 - [ ] Kit templates use real files and directories, not symlinks.
 - [ ] Kit docs explain any project-specific text that must be adapted after install.
 

@@ -49,7 +49,7 @@ Codex-facing skills live under:
 
 Reusable starter files for new projects live under `kits/base/`.
 
-The kit contains copied templates for `AGENTS.md`, `GEMINI.md`, `CLAUDE.md`, `CODEX.md`, `.agents/skills/`, `.claude/skills/`, and `.codex/skills/`, plus an additive-only starter installer (`kits/base/scripts/install.sh` or `python forge.py kit <target> base`). The starter copies missing files, preserves every existing tuned file, rejects destructive force mode and symlink-parent traversal, and is not an updater.
+The kit contains copied templates for `AGENTS.md`, `GEMINI.md`, `CLAUDE.md`, `CODEX.md`, `.agents/skills/`, `.claude/skills/`, `.claude/agents/`, and `.codex/skills/`, plus an additive-only starter installer (`python forge.py kit <target> base`). The starter copies missing files, preserves every existing tuned file, rejects destructive force mode and symlink-parent traversal, and is not an updater.
 
 ## Rules
 
@@ -68,7 +68,7 @@ Use the word "rules" carefully:
 4. Keep `description` specific enough for automatic selection.
 5. Put long checklists in `references/`.
 6. Put OpenAI/Codex metadata in `.codex/skills/<skill-name>/agents/openai.yaml`.
-7. Update `kits/base/templates/` when new projects should inherit the skill.
+7. When other projects should start from the skill too, contribute it to the matching Conclave-SDK kit. There the Claude file goes in the kit's `templates/.claude/skills/`, what an agent's copy must differ in is declared in the kit's `skill-patches/`, and the SDK's own `python forge.py skill-copies` writes the other two copies. That command belongs to the SDK: in this project the three copies are the project's own files, each edited directly.
 8. Update `AGENTS.md` if the skill changes project behavior.
 9. Validate all skill files, references, and metadata.
 
@@ -78,3 +78,9 @@ Use the word "rules" carefully:
 | ----- | --------------------------------------------------------- |
 | `local-tool-safety` | `<agent>/skills/local-tool-safety/` |
 | `authoring-skills` | `<agent>/skills/authoring-skills/` |
+
+## Subagents and Orchestration
+
+- **Claude Code:** Uses five read-only subagent definitions under `.claude/agents/` (`code-explorer`, `debug-evidence`, `git-runner`, `mutation-tester`, `test-runner`), verified by `node scripts/verify-agent-tiers.mjs`.
+- **Google Antigravity:** Uses native `Orchestrator (Carbon)` (`gemini-pro-orchestrator`), which plans on Carbon (`<plan_execute_protocol>`), hands execution to Hydrogen via `exit_plan_mode`, manages its own effort internally, and delegates via built-in subagents (`self`, `research`, `image-generator`) without `.agents/agents/*.md` files or `scripts/agy-subagent.py`.
+- **OpenAI Codex:** Has no project subagent definitions and runs mechanical subtasks in the main session.

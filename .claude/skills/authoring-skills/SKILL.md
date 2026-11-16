@@ -17,7 +17,7 @@ Follow `docs/agent-skills-and-rules-structure.md` before creating or moving skil
 6. Do not put OpenAI/Codex-specific `agents/openai.yaml` inside `.agents/skills` or `.claude/skills`.
 7. Keep `.agents/skills/<skill-name>/`, `.claude/skills/<skill-name>/`, and `.codex/skills/<skill-name>/` as real files and directories, never symlinks.
 8. Keep `agents/openai.yaml` as a real file in `.codex/skills/<skill-name>/agents/openai.yaml` when needed.
-9. Update `kits/base/templates/` (and `skills/{agy,claude,codex}/` in `Conclave-SDK`) when new projects should inherit the skill.
+9. When other projects should start from the skill too, copy it into the matching Conclave-SDK kit's `templates/` by hand; projects never update from the SDK, so this project's copy stays its own.
 10. Use `.codex/rules/*.rules` for Codex Starlark command execution policies and `.agents/rules/`, `.claude/rules/`, `.codex/rules/` for agent-scoped rules.
 
 ## Validation

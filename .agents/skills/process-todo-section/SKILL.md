@@ -29,15 +29,15 @@ Read the whole TODO file and the stamps of the sections this one depends on (the
 
 Fix drift in the TODO file before building, marked `**Corrected YYYY-MM-DD:**` with what it said and what is true. Make an unfalsifiable checkpoint falsifiable. Never narrow the section to fit the code you meant to write. If the whole section is wrong, stop and say what you propose. Where the source is silent, take the standard option and record it as a default.
 
-Before building, commit the corrected contract and run the medium plan pass through `independent-review`. Resolve its findings first.
+Before building, commit the corrected contract and run the plan pass through `independent-review`. Resolve its findings first.
 
 ## 2. Build
 
-Work the checklist top to bottom and tick each item when its `Done when` holds. Keep the diff to the section; file adjacent problems with `add-todo`. User data first: atomic writes, read back what was written, every destructive path confirmed, the failure path tested. Notepad surfaces are proven against the captures in `resources/baseline/`, never memory. UI sections consume the shared styles named in `**Chrome:**` and account for every control on the counterpart (working, or deferred to a named section).
+Work the checklist top to bottom and tick each item when its `Done when` holds. Keep the diff to the section; file adjacent problems with `add-todo`. User data first: atomic writes, read back what was written, every destructive path confirmed, the failure path tested. Notepad behavior is read from the captures in `resources/baseline/stock/`, never memory; they are a behavior and layout reference, not a pixel target (`docs/design-contract.md`). UI sections consume the shared styles named in `**Chrome:**` and account for every control on the counterpart (working, or deferred to a named section).
 
 ## 3. Gates
 
-Follow `gates.md` beside this skill (it defers to `docs/testing.md`): clean build, every test of the feature plus the golden set, the feature's own Primary and Interactive tests, the visual check against Notepad for anything the user sees, and `validate`. Never the whole suite. Quote exit codes and pass, fail and skip counts. A red test of the feature blocks the stamp.
+Follow `gates.md` beside this skill (it defers to `docs/testing.md`): clean build, every test of the feature, the feature's own Primary and Interactive tests, one capture checked for defects when the section changes something the user sees, and `validate`. Never the whole suite. Quote exit codes and pass, fail and skip counts. A red test of the feature blocks the stamp.
 
 ## 4. Review
 

@@ -1,5 +1,7 @@
 """scripts/review-dispatch.py: the one route, read-only invocation, refusals and records, with fake reviewer CLIs."""
+import contextlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -24,7 +26,7 @@ FIXTURE_PIN = textwrap.dedent('''    schema_version = 1
     [reviewers.sol]
     cli = "codex"
     model = "gpt-6.1-sol"
-    effort = "medium"
+    effort = "xhigh"
 
     [routes]
     claude = ["sol"]
@@ -45,7 +47,18 @@ FAKE_CLI = textwrap.dedent('''\
         path = args[-1][len(pointer):].split(" exactly.")[0]
         from_file = open(path).read() if os.path.isfile(path) else None
     with open(os.environ["FAKE_LOG"], "a") as log:
-        log.write(json.dumps({"cli": name, "argv": args, "stdin": stdin, "cwd": os.getcwd(), "from_file": from_file}) + "\\n")
+        settings = open(args[args.index("--settings") + 1]).read() if "--settings" in args else None
+        log.write(json.dumps({"cli": name, "argv": args, "stdin": stdin, "cwd": os.getcwd(), "from_file": from_file,
+                              "settings": settings}) + "\\n")
+    if mode in ("sleepchild", "floodchild"):
+        # The reviewer starts a child that sleeps 60 s, then hangs (sleepchild) or floods stdout (floodchild).
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        open(os.environ["FAKE_CHILD_PID"], "w").write(str(child.pid))
+        while True:
+            if mode == "floodchild":
+                sys.stdout.write("x" * 65536)
+                sys.stdout.flush()
+            time.sleep(0.01)
     if mode == "fail":
         sys.exit(3)
     if mode == "sleep":
@@ -78,7 +91,7 @@ FAKE_CLI = textwrap.dedent('''\
     if name == "codex":
         open(args[args.index("-o") + 1], "w").write(text)
     else:
-        print(json.dumps({"status": "SUCCESS", "response": text}) if name == "agy" else text)
+        print(text)
     if mode == "linger":
         # A process the reviewer started outlives it and holds the message file open for a moment, as a CLI's helper
         # process can; the reviewer exits first, so no tree kill reaches the helper.
@@ -101,6 +114,47 @@ def write_launcher(directory, name, fake):
     return path
 
 
+def pid_alive(pid):
+    """True while process `pid` is running, without touching it. Never os.kill(pid, 0) on Windows: there it
+    terminates the process."""
+    if os.name != "nt":
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+    import ctypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+    kernel32.GetExitCodeProcess.restype = ctypes.c_int
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not handle:
+        return ctypes.get_last_error() == 5  # access denied: it exists; invalid parameter: it is gone
+    try:
+        code = ctypes.c_uint32()
+        return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259  # STILL_ACTIVE
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def kill_pid(pid):
+    """End a process a test started, if it is still running, so a failed test leaves no sleeper behind."""
+    if not pid_alive(pid):
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
+    else:
+        try:
+            os.kill(pid, 9)
+        except ProcessLookupError:
+            pass
+
+
 class Harness(unittest.TestCase):
     """A scratch repository with the dispatcher, a pin and a fake CLI on PATH; holds no tests itself."""
 
@@ -109,7 +163,8 @@ class Harness(unittest.TestCase):
         self.repo = Path(self._tmp.name) / "repo"
         (self.repo / "scripts").mkdir(parents=True)
         (self.repo / ".conclave").mkdir()
-        shutil.copy(SCRIPTS / "review-dispatch.py", self.repo / "scripts/review-dispatch.py")
+        for name in ("review-dispatch.py", "review_pin.py", "review_layout.py"):
+            shutil.copy(SCRIPTS / name, self.repo / "scripts" / name)
         (self.repo / ".conclave/reviewers.toml").write_text(FIXTURE_PIN, encoding="utf-8")
         self.bin = Path(self._tmp.name) / "bin"
         self.bin.mkdir()
@@ -125,11 +180,31 @@ class Harness(unittest.TestCase):
         self.prompt.write_text("Review calc.py. Do not modify any file.\n", encoding="utf-8")
 
     def tearDown(self):
-        self._tmp.cleanup()
+        # On Windows a killed process releases its files a moment after it is reaped, so removal is retried briefly.
+        for attempt in range(50):
+            try:
+                self._tmp.cleanup()
+                return
+            except PermissionError:
+                if attempt == 49:
+                    raise
+                time.sleep(0.1)
+
+    def python_dir(self):
+        """A folder that holds this Python and nothing else, for PATH: on Linux and WSL the interpreter's own folder is
+        /usr/bin, which also holds git and every other tool, so a test of a missing tool would find it there."""
+        if os.name == "nt":
+            return Path(sys.executable).parent
+        folder = Path(self._tmp.name) / "python-only"
+        if not folder.is_dir():
+            folder.mkdir()
+            for name in ("python3", "python"):
+                (folder / name).symlink_to(sys.executable)
+        return folder
 
     def dispatch(self, *args, cwd=None, **modes):
         system_root = {"SYSTEMROOT": os.environ["SYSTEMROOT"]} if os.name == "nt" else {}
-        env = {"PATH": f"{self.bin}{os.pathsep}{Path(sys.executable).parent}", "FAKE_LOG": str(self.log),
+        env = {"PATH": f"{self.bin}{os.pathsep}{self.python_dir()}", "FAKE_LOG": str(self.log),
                "FAKE_CHILD_PID": str(Path(self._tmp.name) / "child.pid"), **system_root,
                **{var: str(self.scratch) for var in ("TMP", "TEMP", "TMPDIR")},
                **{f"FAKE_{k.upper()}": v for k, v in modes.items()}}
@@ -149,8 +224,60 @@ class Harness(unittest.TestCase):
 
 
 class Dispatch(Harness):
-    RESULT = {"writer": "claude", "reviewer": "sol", "model": "gpt-6.1-sol", "cli": "codex", "effort": "medium",
+    RESULT = {"writer": "claude", "reviewer": "sol", "model": "gpt-6.1-sol", "cli": "codex", "effort": "xhigh",
               "failover": []}
+
+    def installed(self):
+        """The dispatcher as the scratch repository holds it, loaded by path: its ROOT is that repository."""
+        spec = importlib.util.spec_from_file_location("dispatch_in_repo", self.repo / "scripts/review-dispatch.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def layout(self, receipts):
+        (self.repo / "todo").mkdir(exist_ok=True)
+        (self.repo / "todo/plan.json").write_text(json.dumps({"layout": {"receipts": receipts}}), encoding="utf-8")
+
+    def test_a_section_findings_file_is_one_in_the_configured_folder(self):
+        # D03 T01 §4: the findings folder is todo/plan.json's layout.receipts, docs/reviews without it.
+        dispatch = self.installed()
+        section, other = "reviews/03-x/D03-T01-s1.md", "docs/reviews/03-x/D03-T01-s1.md"
+        self.assertEqual((dispatch.section_record(self.repo / section), dispatch.section_record(self.repo / other)),
+                         (False, True), "without the key, docs/reviews holds the section files")
+        self.layout("reviews")
+        self.assertEqual((dispatch.section_record(self.repo / section), dispatch.section_record(self.repo / other)),
+                         (True, False))
+        self.layout("../out")
+        with self.assertRaises(dispatch.Refused) as ctx:
+            dispatch.section_record(self.repo / section)
+        self.assertIn("todo/plan.json: layout receipts must be a folder inside the repository", str(ctx.exception))
+
+    def test_both_layout_keys_set_leave_dispatch_and_listing_working(self):
+        # D03 T01 §7: the plan key is the todo kit's; this kit reads receipts and lets plan through.
+        (self.repo / "todo").mkdir(exist_ok=True)
+        (self.repo / "todo/plan.json").write_text(json.dumps({"layout": {"receipts": "reviews", "plan": "docs/plan.md"}}),
+                                                  encoding="utf-8")
+        self.assertTrue(self.installed().section_record(self.repo / "reviews/03-x/D03-T01-s1.md"))
+        record = self.repo / "reviews/00-design/D00-T01-s1.md"
+        result, _ = self.dispatch("--writer", "claude", "--prompt", str(self.prompt), "--record", str(record))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result, listing = self.dispatch("--list-rounds", "--json")
+        self.assertEqual([r["path"] for r in listing["records"]], ["reviews/00-design/D00-T01-s1.md"])
+
+    def test_list_rounds_reads_the_configured_folder_unless_one_is_named(self):
+        self.layout("reviews")
+        record = self.repo / "reviews/00-design/D00-T01-s1.md"
+        self.dispatch("--writer", "claude", "--prompt", str(self.prompt), "--record", str(record))
+        result, listing = self.dispatch("--list-rounds", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([r["path"] for r in listing["records"]], ["reviews/00-design/D00-T01-s1.md"])
+        (self.repo / "elsewhere").mkdir()
+        result, listing = self.dispatch("--list-rounds", "--json", "--records", str(self.repo / "elsewhere"))
+        self.assertEqual((result.returncode, listing["records"]), (0, []), "an explicit --records still wins")
+        self.layout("C:/reviews")
+        result, listing = self.dispatch("--list-rounds", "--json")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("layout receipts must be a folder inside the repository", listing["error"])
 
     def test_sol_reviews_claude_work_read_only(self):
         result, summary = self.dispatch("--writer", "claude", "--prompt", str(self.prompt))
@@ -159,7 +286,7 @@ class Dispatch(Harness):
         self.assertIn("(codex)", summary["review"])
         (call,) = self.calls()
         self.assertEqual(call["argv"][:3], ["exec", "-m", "gpt-6.1-sol"])
-        for flag in ("--sandbox", "read-only", "--ephemeral", "model_reasoning_effort=medium"):
+        for flag in ("--sandbox", "read-only", "--ephemeral", "model_reasoning_effort=xhigh"):
             self.assertIn(flag, call["argv"])
         self.assertEqual(call["argv"][-1], "-", "the prompt goes on stdin, never on the command line")
         self.assertEqual(call["stdin"], self.prompt.read_text())
@@ -274,7 +401,7 @@ class Dispatch(Harness):
                  good + 'opus = ["sol"]\n': "[routes] may only name the writers " + ", ".join(module.WRITERS),
                  good + 'codex = ["sol"]\n':
                      "route 'codex' names sol, of the writer's own family; a review comes from a different family",
-                 good.replace('effort = "medium"', 'effort = "medium"\nsandbox = "workspace-write"'):
+                 good.replace('effort = "xhigh"', 'effort = "xhigh"\nsandbox = "workspace-write"'):
                      "reviewer 'sol' has unknown keys: sandbox"}
         for text, message in cases.items():
             with self.subTest(message=message, text=text[-30:]):
@@ -324,7 +451,7 @@ class Dispatch(Harness):
         result = self.check_pin()
         self.assertEqual((result.returncode, result.stdout), (0, "ok\n"))
         pin = self.repo / ".conclave/reviewers.toml"
-        pin.write_text(pin.read_text().replace('effort = "medium"', 'effort = "extreme"'), encoding="utf-8")
+        pin.write_text(pin.read_text().replace('effort = "xhigh"', 'effort = "extreme"'), encoding="utf-8")
         result = self.check_pin()
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "refused: reviewer 'sol' needs effort = one of low, medium, high, xhigh\n")
@@ -347,7 +474,7 @@ class Dispatch(Harness):
         reviewed, skipped = only["rounds"]
         self.assertEqual({k: reviewed[k] for k in ("number", "reviewer", "model", "cli", "writer", "effort", "skipped")},
                          {"number": 1, "reviewer": "sol", "model": "gpt-6.1-sol", "cli": "codex", "writer": "claude",
-                          "effort": "medium", "skipped": []})
+                          "effort": "xhigh", "skipped": []})
         self.assertRegex(reviewed["run"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         self.assertEqual({k: skipped[k] for k in ("number", "reviewer", "model", "cli", "effort", "skipped")},
                          {"number": 2, "reviewer": None, "model": None, "cli": None, "effort": None,
@@ -586,7 +713,7 @@ class Dispatch(Harness):
         self.dispatch("--writer", "claude", "--prompt", str(self.prompt), "--record", str(good))
         recorded = good.read_text(encoding="utf-8")
         cases = {
-            "empty-effort.md": recorded.replace("- Effort: medium", "- Effort:\n- Skipped: x (y)"),
+            "empty-effort.md": recorded.replace("- Effort: xhigh", "- Effort:\n- Skipped: x (y)"),
             "two-writers.md": recorded.replace("- Writer: claude", "- Writer: claude\n- Writer: codex"),
             "no-blank.md": recorded.replace("via `codex`)\n\n", "via `codex`)\n"),
         }
@@ -641,23 +768,120 @@ class Dispatch(Harness):
         self.assertIn("NUL byte", result.stderr)
         self.assertEqual(self.calls(), [])
 
-    @unittest.skipIf(os.name == "nt", "Windows cannot reach a child once its reviewer has exited (see kill_tree)")
+    def assert_child_gone(self):
+        """The child the fake reviewer recorded in FAKE_CHILD_PID is not running, within a short bounded wait. The
+        child is ended at cleanup whatever the assertions did, so a failing run never leaves its sleeper behind."""
+        pid_file = Path(self._tmp.name) / "child.pid"
+        for _ in range(50):  # the file is written once the fake reviewer has started its child
+            if pid_file.exists() and pid_file.read_text():
+                break
+            time.sleep(0.1)
+        self.assertTrue(pid_file.exists(), "the fake reviewer never started its child")
+        pid = int(pid_file.read_text())
+        self.addCleanup(kill_pid, pid)
+        for _ in range(50):
+            if not pid_alive(pid):
+                return
+            time.sleep(0.1)
+        self.fail("the reviewer's child process was still running")
+
     def test_a_reviewers_children_do_not_outlive_it(self):
         _, summary = self.dispatch("--writer", "claude", "--prompt", str(self.prompt), codex="orphan")
         self.assertEqual(summary["reviewer"], "sol")
-        pid = int((Path(self._tmp.name) / "child.pid").read_text())
-        for _ in range(50):
-            try:
-                os.kill(pid, 0)
-            except ProcessLookupError:
-                return
-            time.sleep(0.1)
-        os.kill(pid, 9)
-        self.fail("the reviewer's child process was still running")
+        self.assert_child_gone()
+
+    def test_a_reviewers_children_do_not_outlive_its_timeout(self):
+        _, summary = self.dispatch("--writer", "claude", "--prompt", str(self.prompt), "--timeout", "5",
+                                   codex="sleepchild")
+        self.assertEqual(summary["failover"], [{"reviewer": "sol", "reason": "timed out"}])
+        self.assert_child_gone()
+
+    def test_a_reviewers_children_do_not_outlive_an_output_flood(self):
+        _, summary = self.dispatch("--writer", "claude", "--prompt", str(self.prompt), "--timeout", "40",
+                                   codex="floodchild")
+        self.assertEqual(summary["failover"], [{"reviewer": "sol", "reason": "returned more than 2000000 bytes"}])
+        self.assert_child_gone()
+
+    def start_failure(self, step_function):
+        """Run a reviewer that would start a child and hang, with `step_function` of the dispatcher failing: the
+        reason names the step, the suspended reviewer is dead and reaped, no child exists, the job handle was ended
+        exactly once, and the call returned promptly."""
+        module = self.module()
+        child_pid = Path(self._tmp.name) / "child.pid"
+        code = ("import subprocess, sys, time; c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+                f"open({str(child_pid)!r}, 'w').write(str(c.pid)); time.sleep(60)")
+        started, closed, processes = [], [], []
+        real_popen, real_close = module.subprocess.Popen, module.close_windows_job
+
+        def popen(*args, **kwargs):
+            processes.append(real_popen(*args, **kwargs))
+            self.addCleanup(kill_pid, processes[-1].pid)
+            return processes[-1]
+
+        def close(job):
+            closed.append(job)
+            real_close(job)
+
+        with unittest.mock.patch.object(module, step_function, side_effect=OSError("injected failure")), \
+                unittest.mock.patch.object(module.subprocess, "Popen", popen), \
+                unittest.mock.patch.object(module, "close_windows_job", close):
+            began = time.monotonic()
+            result = module.run([sys.executable, "-c", code], None, 30, [Path(self._tmp.name) / "out.txt"])
+            elapsed = time.monotonic() - began
+        self.assertLess(elapsed, 10)
+        self.assertEqual(result[0], None)
+        self.assertEqual(len(closed), 0 if step_function == "create_windows_job" else 1, "the job is closed once")
+        for process in processes:
+            self.assertIsNotNone(process.returncode, "the suspended reviewer was not killed and reaped")
+            self.assertFalse(pid_alive(process.pid))
+        self.assertFalse(child_pid.exists(), "the reviewer ran far enough to start a child")
+        return result[1]
+
+    @unittest.skipUnless(os.name == "nt", "job objects are Windows only; POSIX uses a process group")
+    def test_a_job_that_cannot_be_created_is_no_review(self):
+        self.assertEqual(self.start_failure("create_windows_job"),
+                         "could not start: create job: injected failure")
+
+    @unittest.skipUnless(os.name == "nt", "job objects are Windows only; POSIX uses a process group")
+    def test_a_job_that_cannot_be_configured_is_no_review(self):
+        self.assertEqual(self.start_failure("configure_windows_job"),
+                         "could not start: configure job: injected failure")
+
+    @unittest.skipUnless(os.name == "nt", "job objects are Windows only; POSIX uses a process group")
+    def test_a_reviewer_that_cannot_be_assigned_to_the_job_is_no_review(self):
+        self.assertEqual(self.start_failure("assign_windows_job"),
+                         "could not start: assign to job: injected failure")
+
+    @unittest.skipUnless(os.name == "nt", "job objects are Windows only; POSIX uses a process group")
+    def test_a_reviewer_that_cannot_be_resumed_is_no_review(self):
+        self.assertEqual(self.start_failure("resume_windows_process"),
+                         "could not start: resume: injected failure")
+
+    @unittest.skipUnless(os.name == "nt", "job objects are Windows only; POSIX uses a process group")
+    def test_each_job_step_that_fails_is_exit_1_through_the_dispatchers_entry_point(self):
+        # Completion review of D00 T01 §6: the tests above call run() itself. The same four failures through main(),
+        # as a writer meets them: exit 1, a summary with no reviewer, the step named in the reason.
+        module = self.module()
+        environment = {"PATH": f"{self.bin}{os.pathsep}{Path(sys.executable).parent}", "FAKE_LOG": str(self.log),
+                       "PATHEXT": ".CMD;.EXE", **{var: str(self.scratch) for var in ("TMP", "TEMP", "TMPDIR")}}
+        for function, step in (("create_windows_job", "create job"), ("configure_windows_job", "configure job"),
+                               ("assign_windows_job", "assign to job"), ("resume_windows_process", "resume")):
+            with self.subTest(step=step):
+                printed = io.StringIO()
+                with unittest.mock.patch.object(module, function, side_effect=OSError("injected failure")), \
+                        unittest.mock.patch.dict(os.environ, environment), contextlib.redirect_stdout(printed):
+                    code = module.main(["--writer", "claude", "--prompt", str(self.prompt), "--pin",
+                                        str(self.repo / ".conclave/reviewers.toml")])
+                summary = json.loads(printed.getvalue())
+                self.assertEqual(code, 1)
+                self.assertIsNone(summary["reviewer"])
+                self.assertEqual(summary["failover"],
+                                 [{"reviewer": "sol", "reason": f"could not start: {step}: injected failure"}])
+        self.assertEqual(self.calls(), [], "no reviewer may have run")
 
     def test_the_prompt_never_reaches_the_command_line(self):
         # A Windows .cmd shim re-parses its arguments through cmd.exe, so prose there could become commands.
-        argv, stdin = self.module().command({"cli": "codex", "model": "gpt-6.1-sol", "effort": "medium"},
+        argv, stdin = self.module().command({"cli": "codex", "model": "gpt-6.1-sol", "effort": "xhigh"},
                                             "C:/tools/codex.cmd", "x & del *", Path("C:/p.md"), Path("o"), 60)
         self.assertEqual(argv[-1], "-")
         self.assertEqual(stdin, "x & del *")
@@ -678,6 +902,70 @@ class Dispatch(Harness):
         result, summary = self.dispatch("--writer", "claude", "--prompt", str(self.prompt))
         self.assertEqual(result.returncode, 1)
         self.assertTrue(summary["failover"][0]["reason"].startswith("could not start"), summary["failover"])
+
+    def test_a_reviewer_without_an_effort_runs_with_no_effort_argument(self):
+        # plan R10: effort is optional; the CLI's own configuration then decides, and nothing is recorded as run.
+        pin = self.repo / ".conclave/reviewers.toml"
+        pin.write_text(pin.read_text().replace('effort = "xhigh"\n', ''), encoding="utf-8")
+        record = self.repo / "docs/reviews/no-effort.md"
+        result, summary = self.dispatch("--writer", "claude", "--prompt", str(self.prompt), "--record", str(record))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (call,) = self.calls()
+        self.assertFalse([a for a in call["argv"] if "effort" in a], call["argv"])
+        self.assertIsNone(summary["effort"])
+        self.assertNotIn("- Effort:", record.read_text(encoding="utf-8"))
+        module = self.module()
+        for cli in ("codex", "claude"):
+            argv, _ = module.command({"cli": cli, "model": "m"}, cli, "p", "p.md", "o.md", 60)
+            self.assertFalse([a for a in argv if "effort" in a], argv)
+            argv, _ = module.command({"cli": cli, "model": "m"}, cli, "p", "p.md", "o.md", 60, "low")
+            self.assertTrue([a for a in argv if "effort" in a], argv)
+
+    def test_a_review_that_cannot_be_saved_still_reaches_stdout(self):
+        # Completion review of D00 T01 §2: a failed write lost the review. The findings folder is a file here, so the
+        # write fails as a full disk or a read-only folder would.
+        blocker = self.repo / "docs"
+        blocker.write_text("not a folder\n", encoding="utf-8")
+        for extra in ((), ("--kind", "completion", "--candidate", "a" * 40)):
+            with self.subTest(kind=extra[:2]):
+                result, summary = self.dispatch("--writer", "claude", "--prompt", str(self.prompt), "--record",
+                                                str(blocker / "reviews" / "x.md"), *extra,
+                                                **({"codex": "completion"} if extra else {}))
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertIn("could not be written", result.stderr)
+                self.assertEqual(summary["reviewer"], "sol")
+                self.assertTrue(summary["review"])
+                self.assertIn(summary.get("recorded", summary.get("round")), (False, None))
+        self.assertEqual(blocker.read_text(encoding="utf-8"), "not a folder\n")
+
+    def test_a_prompt_that_is_not_utf8_is_refused_before_a_reviewer_runs(self):
+        self.prompt.write_bytes(b"Review this \xff\xfe file.\n")
+        result, _ = self.dispatch("--writer", "claude", "--prompt", str(self.prompt))
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertIn("is not UTF-8 text", result.stderr)
+        self.assertEqual(self.calls(), [])
+
+    def test_a_scheduled_step_without_an_effort_passes_none_whatever_the_reviewers(self):
+        # Round 1 of D00 T01 §1: the record must show what the schedule says, or the stamp's replay refuses it. A step
+        # that sets no effort therefore runs with none, even when the reviewer has one of its own.
+        pin = self.repo / ".conclave/reviewers.toml"
+        pin.write_text(SCHEDULED_PIN.replace('[schedule.plan]\neffort = "medium"', "[schedule.plan]"),
+                       encoding="utf-8")
+        module = self.module()
+        schedule = module.load_pin(pin)["schedule"]
+        self.assertNotIn("effort", schedule["plan"])
+        record = self.repo / "docs/reviews/plan-no-effort.md"
+        result, summary = self.dispatch("--kind", "plan", "--candidate", "a" * 40, "--writer", "claude",
+                                        "--prompt", str(self.prompt), "--record", str(record))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        (call,) = self.calls()
+        self.assertFalse([a for a in call["argv"] if "effort" in a], call["argv"])
+        (entry,) = module.read_plans(record.read_text(encoding="utf-8"))
+        expected = module.scheduled(schedule, "plan", [], False)
+        self.assertEqual((entry["effort"], entry["lenses"]), (expected["effort"], expected["lenses"]))
+        self.assertIsNone(summary["effort"])
 
     def test_a_non_integer_schema_version_is_refused(self):
         # TOML true is Python True and 1.0 == 1, so both passed a `!= 1` check and loaded.
@@ -748,36 +1036,31 @@ class Dispatch(Harness):
         result, _ = self.complete(record, codex="completion")
         self.assertEqual(result.returncode, 0, result.stderr)
         before = record.read_bytes()
-        calls_before = len(self.calls())
         result, summary = self.complete(record, codex="completion")
         self.assertEqual(result.returncode, 2)
         self.assertIn("already holds a completion review", result.stderr)
-        self.assertIsNone(summary)
-        self.assertEqual(len(self.calls()), calls_before, "consumed completion spent another review")
+        self.assertFalse(summary["recorded"])
         self.assertEqual(record.read_bytes(), before, "a second completion review was appended")
 
-    def test_a_completion_reply_without_its_verdict_leaves_the_pass_open(self):
-        record = self.repo / "docs/reviews/c.md"
-        result, _ = self.complete(record, codex="say", say="1. Open file: present.")
-        self.assertIn("## Completion review: sol", record.read_text(encoding="utf-8"), "the attempt is recorded")
-        result, summary = self.complete(record, codex="completion")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(summary["recorded"], "a reply without COMPLETION: is not the pass, so the retry is recorded")
-        entries = self.module().read_completions(record.read_text(encoding="utf-8"))
-        self.assertEqual([self.module().returned_pass("completion", e) for e in entries], [False, True])
-        result, _ = self.complete(record, codex="completion")
-        self.assertIn("already holds a completion review", result.stderr)
-
-    def test_a_completion_review_needs_a_full_candidate_and_a_round_takes_none(self):
+    def test_a_completion_review_needs_a_full_candidate_and_a_round_may_name_one(self):
         for candidate in (None, "abc1234", self.CANDIDATE.upper(), self.CANDIDATE + "0"):
             with self.subTest(candidate=candidate):
                 args = ["--kind", "completion", "--writer", "claude", "--prompt", str(self.prompt)]
                 result, _ = self.dispatch(*args, *(["--candidate", candidate] if candidate else []))
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("--kind completion needs --candidate", result.stderr)
-        result, _ = self.dispatch("--candidate", self.CANDIDATE, "--writer", "claude", "--prompt", str(self.prompt))
+        # A round may name the commit it reviewed, recorded as its Candidate line; a malformed one is refused.
+        result, _ = self.dispatch("--candidate", "abc1234", "--writer", "claude", "--prompt", str(self.prompt))
         self.assertEqual(result.returncode, 2)
+        self.assertIn("--candidate must be the full 40-character commit", result.stderr)
         self.assertEqual(self.calls(), [])
+        record = self.repo / "docs/reviews/with-candidate.md"
+        result, summary = self.dispatch("--candidate", self.CANDIDATE, "--writer", "claude", "--prompt",
+                                        str(self.prompt), "--record", str(record))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(summary["candidate"], self.CANDIDATE)
+        (entry,) = self.module().read_rounds(record.read_text(encoding="utf-8"))
+        self.assertEqual(entry["candidate"], self.CANDIDATE)
 
     def test_a_completion_review_edited_by_hand_is_unreadable(self):
         record = self.repo / "docs/reviews/c.md"
@@ -809,8 +1092,7 @@ class Dispatch(Harness):
 def bad_pins(good):
     """Every rule a parsable pin can break, each as one edit of the fixture, shared by the review and check tests."""
     mini = '\n[reviewers.mini]\ncli = "codex"\nmodel = "gpt-6-mini"\neffort = "low"\n'
-    return (good.replace('effort = "medium"', 'effort = "extreme"'),
-            good.replace('effort = "medium"\n', ''),
+    return (good.replace('effort = "xhigh"', 'effort = "extreme"'),
             good.replace('cli = "codex"', 'cli = "bash"'),
             # Antigravity takes no effort, and Claude Code cannot review its own family's work.
             good.replace('cli = "codex"', 'cli = "agy"'),
@@ -819,7 +1101,7 @@ def bad_pins(good):
             good.replace('model = "gpt-6.1-sol"', 'model = "gpt-6.1-sol; rm -rf ~"'),
             good + '\n[extra]\nkey = 1\n',
             good.replace('claude = ["sol"]', 'claude = [["sol"]]'),
-            good.replace('effort = "medium"', 'effort = "medium"\nsandbox = "workspace-write"'),
+            good.replace('effort = "xhigh"', 'effort = "xhigh"\nsandbox = "workspace-write"'),
             # A fallback, an empty route, a name outside a list, an unknown writer and a same-family route.
             good.replace('claude = ["sol"]', 'claude = ["sol", "mini"]') + mini,
             good.replace('claude = ["sol"]', 'claude = []'),
@@ -840,7 +1122,7 @@ SCHEDULED_PIN = FIXTURE_PIN + textwrap.dedent('''
     effort = "medium"
 
     [[schedule.rounds]]
-    effort = "medium"
+    effort = "high"
     lenses = ["adversarial", "integration"]
 
     [[schedule.rounds]]
@@ -887,13 +1169,13 @@ class Schedule(Harness):
             self.assertIn("## Lenses for this pass", call["stdin"])
             for name in summary["lenses"]:
                 self.assertIn(f"- `{name}`:", call["stdin"])
-        self.assertEqual(seen, [(1, "medium", ["adversarial", "integration"]), (2, "medium", ["adversarial"]),
+        self.assertEqual(seen, [(1, "high", ["adversarial", "integration"]), (2, "medium", ["adversarial"]),
                                 (3, "low", ["adversarial"]), (4, "low", ["consistency"]), (5, "low", ["record"]),
                                 (6, "low", ["consistency"]), (7, "low", ["record"])],
                          "without --surface the rotation skips the design lens")
         rounds = self.module().read_rounds(self.findings.read_text(encoding="utf-8"))
         self.assertEqual([(r["effort"], r["lenses"]) for r in rounds][:2],
-                         [("medium", ["adversarial", "integration"]), ("medium", ["adversarial"])])
+                         [("high", ["adversarial", "integration"]), ("medium", ["adversarial"])])
 
     def test_surface_puts_design_in_the_rotation(self):
         lenses = [self.round("OVERALL: approve", "--surface")[0]["lenses"] for _ in range(6)]
@@ -982,20 +1264,6 @@ class Schedule(Harness):
         summary, _ = self.round()
         self.assertEqual(summary["position"], 1, "the plan review does not move the round position")
 
-    def test_a_plan_reply_without_its_verdict_leaves_the_pass_open(self):
-        candidate = "a" * 40
-        plan = ("--writer", "claude", "--prompt", str(self.prompt), "--kind", "plan", "--candidate", candidate,
-                "--record", str(self.findings))
-        self.dispatch(*plan, codex="say", say="1. Keyboard reach: missing.\n\nOVERALL: needs-attention")
-        result, summary = self.dispatch(*plan, codex="say", say="1. Gap.\n\nPLAN: gaps\nOVERALL: needs-attention")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(summary["recorded"], "a reply without PLAN: is not the pass, so the retry is recorded")
-        entries = self.module().read_plans(self.findings.read_text(encoding="utf-8"))
-        self.assertEqual([self.module().returned_pass("plan", e) for e in entries], [False, True])
-        result, _ = self.dispatch(*plan, codex="say", say="PLAN: complete\nOVERALL: approve")
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("already holds a plan review", result.stderr)
-
     def test_a_plan_review_needs_a_full_candidate(self):
         for extra in ((), ("--candidate", "abc123")):
             with self.subTest(extra=extra):
@@ -1015,7 +1283,7 @@ class Schedule(Harness):
     def test_a_pin_without_a_schedule_keeps_the_reviewers_effort_and_prompt(self):
         (self.repo / ".conclave/reviewers.toml").write_text(FIXTURE_PIN, encoding="utf-8")
         summary, (call,) = self.round()
-        self.assertEqual(self.effort_of(call), "medium")
+        self.assertEqual(self.effort_of(call), "xhigh")
         self.assertEqual(call["stdin"], self.prompt.read_text())
         self.assertNotIn("position", summary)
 
@@ -1051,8 +1319,26 @@ class Schedule(Harness):
         self.assertEqual(self.calls(), [])
 
 
+class SilentReviewer(Harness):
+    """A reviewer that prints no review but says why on stderr: its words are the recorded reason (D00 T02 §1)."""
+
+    def test_the_reason_carries_the_cli_s_own_first_stderr_line(self):
+        fake = Path(self._tmp.name) / "fake_cli.py"
+        fake.write_text("import sys\nsys.stderr.write('\\njetski: no output produced: a tool was auto-denied.\\nmore\\n')\n",
+                        encoding="utf-8")
+        result, summary = self.dispatch("--writer", "claude", "--prompt", str(self.prompt))
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(summary["failover"][0]["reason"],
+                         "returned no review: jetski: no output produced: a tool was auto-denied.")
+
+    def test_a_silent_reviewer_with_nothing_on_stderr_is_still_no_review(self):
+        result, summary = self.dispatch("--writer", "claude", "--prompt", str(self.prompt), codex="empty")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(summary["failover"][0]["reason"], "returned no review")
+
+
 class MultiCli(Harness):
-    """The Antigravity reviewer beside Astra: each writer family is reviewed by another family, read-only."""
+    """The Antigravity and Claude Code reviewers: each writer family is reviewed by another family, read-only."""
 
     PIN = textwrap.dedent('''    schema_version = 1
 
@@ -1063,27 +1349,38 @@ class MultiCli(Harness):
 
         [reviewers.gemini]
         cli = "agy"
-        model = "gemini-4-argon-medium"
+        model = "gemini-4-argon-high"
+
+        [reviewers.sonnet]
+        cli = "claude"
+        model = "claude-sonnet-5-5"
+        effort = "high"
 
         [routes]
         claude = ["astra"]
         codex = ["gemini"]
-        gemini = ["astra"]
+        gemini = ["sonnet"]
     ''')
 
     def setUp(self):
         super().setUp()
         (self.repo / ".conclave/reviewers.toml").write_text(self.PIN, encoding="utf-8")
 
-    def test_gemini_runs_in_plan_mode_with_the_prompt_as_the_p_value(self):
+    def test_gemini_runs_sandboxed_under_deny_rules_with_the_prompt_as_the_p_value(self):
         result, summary = self.dispatch("--writer", "codex", "--prompt", str(self.prompt))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual((summary["reviewer"], summary["model"], summary["effort"]), ("gemini", "gemini-4-argon-medium", None))
+        self.assertEqual((summary["reviewer"], summary["model"], summary["effort"]), ("gemini", "gemini-4-argon-high", None))
         self.assertIn("(agy)", summary["review"])
         (call,) = self.calls()
         self.assertEqual(call["cli"], "agy")
         self.assertIn("--sandbox", call["argv"])
-        self.assertEqual(call["argv"][call["argv"].index("--mode") + 1], "plan")
+        # Never plan mode: headless plan mode refuses every shell command, so the reviewer could read no commit
+        # (D00 T02 §1, measured on agy 1.5.8). Read-only comes from the sandbox and the session's deny rules.
+        self.assertNotIn("--mode", call["argv"])
+        self.assertNotIn("--dangerously-skip-permissions", call["argv"])
+        self.assertEqual(json.loads(call["settings"]),
+                         {"permissions": {"deny": ["write_file(*)", "edit_file(*)", "mcp(*)"]}})
+        self.assertFalse(Path(call["argv"][call["argv"].index("--settings") + 1]).exists(), "the settings file is scratch")
         if os.name == "nt":
             # The fake is a .cmd shim on Windows, so the prompt must arrive by file, never as argument text.
             self.assertTrue(call["argv"][-1].startswith("-p=Follow the review instructions in the file "))
@@ -1091,12 +1388,16 @@ class MultiCli(Harness):
         else:
             self.assertEqual(call["argv"][-1], "-p=" + self.prompt.read_text())
 
-    def test_astra_reviews_gemini_work(self):
+    def test_sonnet_reviews_gemini_work_in_plan_mode(self):
         result, summary = self.dispatch("--writer", "gemini", "--prompt", str(self.prompt))
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(summary["reviewer"], "astra")
+        self.assertEqual(summary["reviewer"], "sonnet")
+        self.assertIn("(claude)", summary["review"])
         (call,) = self.calls()
-        self.assertEqual(call["cli"], "codex")
+        self.assertEqual(call["argv"][call["argv"].index("--permission-mode") + 1], "plan")
+        self.assertEqual(call["argv"][call["argv"].index("--model") + 1], "claude-sonnet-5-5")
+        self.assertEqual(call["argv"][call["argv"].index("--effort") + 1], "high")
+        self.assertEqual(call["stdin"], self.prompt.read_text())
 
     def test_a_large_prompt_reaches_gemini_by_file(self):
         self.prompt.write_text("x" * 150_000, encoding="utf-8")
@@ -1106,7 +1407,7 @@ class MultiCli(Harness):
         self.assertEqual(call["from_file"], "x" * 150_000)
 
     def test_a_windows_shim_never_gets_prompt_text_in_its_arguments(self):
-        reviewer = {"cli": "agy", "model": "gemini-4-argon-medium"}
+        reviewer = {"cli": "agy", "model": "gemini-4-argon-high"}
         argv, stdin = self.module().command(reviewer, "C:/tools/agy.cmd", "x & del *", Path("C:/p.md"), Path("o"), 60)
         self.assertEqual(argv[-1], f"-p=Follow the review instructions in the file {Path('C:/p.md')} exactly. "
                                    "Do not modify any file.")
@@ -1114,9 +1415,12 @@ class MultiCli(Harness):
         argv, _ = self.module().command(reviewer, "/usr/bin/agy", "short prompt", Path("/p.md"), Path("o"), 60)
         self.assertEqual(argv[-1], "-p=short prompt")
 
-    def test_a_scheduled_effort_never_reaches_antigravity(self):
+    def test_a_scheduled_effort_reaches_claude_and_never_antigravity(self):
         module = self.module()
-        argv, _ = module.command({"cli": "agy", "model": "gemini-4-argon-medium"}, "/usr/bin/agy", "p", Path("/p.md"),
+        claude = {"cli": "claude", "model": "claude-sonnet-5-5", "effort": "high"}
+        argv, _ = module.command(claude, "/usr/bin/claude", "p", Path("/p.md"), Path("o"), 60, "low")
+        self.assertEqual(argv[argv.index("--effort") + 1], "low")
+        argv, _ = module.command({"cli": "agy", "model": "gemini-4-argon-high"}, "/usr/bin/agy", "p", Path("/p.md"),
                                  Path("o"), 60, "low")
         self.assertNotIn("low", " ".join(argv))
 
@@ -1139,33 +1443,17 @@ class RepositoryPin(unittest.TestCase):
         pin = module.load_pin(REPO_PIN)
         self.assertTrue(pin["routes"], "the repository pin routes no writer")
 
-    def test_the_repository_pin_is_one_reviewer_per_writer_on_the_schedule(self):
-        with open(REPO_PIN, "rb") as handle:
-            pin = tomllib.load(handle)
-        self.assertEqual(pin["reviewers"]["argon"], {
-            "cli": "agy", "model": "gemini-4-argon-medium",
-            "models_by_effort": {"low": "gemini-4-argon-low", "medium": "gemini-4-argon-medium"}})
-        self.assertEqual(pin["reviewers"]["astra"], {"cli": "codex", "model": "gpt-6-astra", "effort": "medium"})
-        self.assertEqual(pin["routes"], {"claude": ["astra"], "codex": ["argon"],
-                                       "gemini": ["astra"]})
-        schedule = pin["schedule"]
-        self.assertEqual(schedule["completion_order"], "last")
-        self.assertEqual(schedule["max_low_rounds"], 8)
-        self.assertEqual(schedule["plan"], {"effort": "medium", "lenses": ["plan"]})
-        self.assertEqual(schedule["completion"], {"effort": "medium"})
-        self.assertEqual(schedule["rounds"], [{"effort": "medium", "lenses": ["adversarial"]}])
-        self.assertEqual(schedule["escalation"], {"effort": "low", "lenses": ["adversarial"]})
-        self.assertEqual(schedule["rotation"]["effort"], "low")
-
     def test_the_pins_severity_stop_is_the_stamps_cutoff(self):
         # The dispatcher reports severity_stop from the pin and `stamp` re-checks it against SEVERITY_CUTOFF_ROUND: the
         # two numbers must agree, or the dispatcher would stop a loop the stamp then refuses. todo_graph ships in the
         # todo kit: installed beside this script in a project, or in the sibling kit inside Conclave-SDK.
         with open(REPO_PIN, "rb") as handle:
-            if "schedule" not in tomllib.load(handle):
-                self.skipTest("the repository pin has no [schedule]")
+            if "severity_stop_after" not in tomllib.load(handle).get("schedule", {}):
+                self.skipTest("the repository pin has no rotation [schedule]")
+        # The sibling kit only exists when this file sits in Conclave-SDK's kits/reviewer/templates/scripts/tests.
+        kits = SCRIPTS.parents[2] if len(SCRIPTS.parents) > 2 else SCRIPTS
         found = [path for path in (SCRIPTS / "lib" / "todo_graph.py",
-                                   SCRIPTS.parents[2] / "todo" / "templates" / "scripts" / "lib" / "todo_graph.py")
+                                   kits / "todo" / "templates" / "scripts" / "lib" / "todo_graph.py")
                  if path.is_file()]
         if not found:
             self.skipTest("the todo kit is not installed")

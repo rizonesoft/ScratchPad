@@ -1,4 +1,5 @@
-"""Claude-owned campaign lifecycle. No imports or jobs from the Codex runtime."""
+"""Campaign lifecycle for the Claude Code writer. scripts/agy_campaign.py reuses it for the Carbon writer
+with its own state folder; the two share only the writer interlock."""
 from contextlib import contextmanager
 import argparse
 import hashlib
@@ -14,7 +15,8 @@ import time
 import uuid
 
 HARNESS = 'claude'
-OTHER = 'codex'
+OTHER = 'agy'
+SESSION_ENV = 'CLAUDE_CODE_SESSION_ID'
 ROOT = Path(__file__).resolve().parents[1]
 PREFIX = 'SCRATCHPAD_HEARTBEAT '
 
@@ -251,7 +253,7 @@ def hook(root, event):
 
 
 def queue_message(root, session, message):
-    raise RuntimeError('Claude heartbeat delivery uses CronCreate in the owning session')
+    raise RuntimeError('heartbeat delivery uses the scheduler of the owning session')
 
 
 def heartbeat(root, session, generation, send=True):
@@ -281,7 +283,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, default=ROOT)
     parser.add_argument('action', choices=('acquire','end','status','hook','heartbeat'))
-    parser.add_argument('--session', default=os.environ.get('CLAUDE_CODE_SESSION_ID', ''))
+    parser.add_argument('--session', default=os.environ.get(SESSION_ENV, ''))
     parser.add_argument('--generation')
     parser.add_argument('--run-file')
     parser.add_argument('--scope', choices=('plan','phase'), default='plan')
@@ -299,7 +301,7 @@ def main():
         elif args.action == 'end': print(json.dumps(end(args.root,args.session,args.reason)))
         elif args.action == 'status': print(json.dumps(read(args.root)))
         elif args.action == 'heartbeat':
-            print(heartbeat(args.root,args.session,args.generation,send=HARNESS=='codex') or '')
+            print(heartbeat(args.root,args.session,args.generation,send=False) or '')
         return 0
     except Exception as error:
         if args.action == 'hook':
