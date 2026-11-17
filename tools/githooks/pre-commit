@@ -37,4 +37,7 @@ fi
 if [ -f "$WORK/scripts/agent_routing.py" ]; then
   (cd "$WORK" && "$PY" scripts/agent_routing.py check >/dev/null) || { (cd "$WORK" && "$PY" scripts/agent_routing.py check | grep FATAL >&2); echo "pre-commit: subagent routing drifted on the staged tree (see AGENTS.md Delegation); fix the findings above and retry" >&2; exit 1; }
 fi
+if [ -f "$WORK/scripts/design-lint.py" ]; then
+  "$PY" "$WORK/scripts/design-lint.py" --staged || { echo "pre-commit: design-lint is red on the staged tree; fix the findings above and retry" >&2; exit 1; }
+fi
 git diff --quiet -- scripts todo docs || { "$PY" scripts/todo-graph.py validate >/dev/null 2>&1 || echo "pre-commit: warning: unstaged changes carry findings; this gate validated only the staged tree" >&2; }

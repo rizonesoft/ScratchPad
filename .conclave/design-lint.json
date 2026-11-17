@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "mode": "theme-only",
+  "contract": "docs/design-contract.md",
+  "ui_roots": [
+    "src"
+  ],
+  "exclude": [
+    "resources/brand/",
+    "tools/"
+  ]
+}

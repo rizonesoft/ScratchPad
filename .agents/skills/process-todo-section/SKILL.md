@@ -5,7 +5,7 @@ description: Ship exactly one TODO section end to end -- resolve it, check the p
 
 # Process TODO Section
 
-One section, one logical change. The section is the contract: check it, build it, prove it, stamp it.
+One section, one logical change. The section is the contract: check it, build it, prove it, stamp it. Under Orchestrator (Carbon), Carbon performs pre-build validation against the live repository and `docs/design-contract.md` in Plan Mode (naming exact theme resources, shared `Chrome:` controls, UI states, and verification commands) before calling `exit_plan_mode` for that one section, and sets `Re-plan if:` so Hydrogen hands back after `stamp` and `ci_status.py` before resolving the next row (whether `Surface` is `yes` or `no`), or immediately mid-section on a missing theme resource or control, `COMPLETION: gaps` or a `P1`/`P2` architectural or design-contract finding, or two failed fix attempts.
 
 ## 0. Resolve
 

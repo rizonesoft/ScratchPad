@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "counts": {
+    "src/ScratchPad/AccentService.cs": {
+      "color-literal": 2
+    },
+    "src/ScratchPad/SettingsPage.xaml.cs": {
+      "color-literal": 2
+    },
+    "src/ScratchPad/TabBar.xaml.cs": {
+      "color-literal": 1
+    }
+  },
+  "history": [
+    {
+      "at": "2026-11-17T07:52:26Z",
+      "reason": "Initial shrink-only theme-only baseline on design-lint rollout",
+      "added": {
+        "src/ScratchPad/AccentService.cs:color-literal": 2,
+        "src/ScratchPad/SettingsPage.xaml.cs:color-literal": 2,
+        "src/ScratchPad/TabBar.xaml.cs:color-literal": 1
+      }
+    }
+  ]
+}

@@ -25,6 +25,8 @@ Fix any `validate` failure first; if provisioning faults, run `tools/provision.p
 
 ## 1. Ship
 
+Under Orchestrator (Carbon), Carbon plans one ready section per `exit_plan_mode` handoff, and Hydrogen hands back to Carbon via `enter_plan_mode` after each row's `stamp`, push (when applicable), `merge_prs.py`, and `ci_status.py` check before resolving the next row (whether `Surface` is `yes` or `no`). Mid-section, Hydrogen hands back immediately to Carbon only when (a) a needed design token or shared `Chrome:` control does not exist, (b) the pinned reviewer returns `COMPLETION: gaps` or a `P1` or `P2` architectural or design-contract finding, or (c) Hydrogen fails twice on the same fix.
+
 For each row of the phase in table order that `resolve` exits `0` for and that is runnable in this context: run `process-todo-section` on it. Re-check skipped rows after each stamp, because rows unblock as others flip. A row blocked on another phase stays where it is. A broken reference in the phase table is repaired, not skipped.
 
 Gaps you notice while shipping (a surface or control no section owns) are filed with `add-todo` the same turn.
